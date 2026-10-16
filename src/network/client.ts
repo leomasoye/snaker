@@ -23,8 +23,18 @@ export class NetworkClient {
   public onStatusChange?: (online: boolean) => void;
 
   constructor() {
-    const host = typeof window !== 'undefined' ? window.location.hostname || 'localhost' : 'localhost';
-    this.serverUrl = `ws://${host}:3001`;
+    if (typeof window !== 'undefined') {
+      const isHttps = window.location.protocol === 'https:';
+      const wsProto = isHttps ? 'wss:' : 'ws:';
+      if (window.location.port === '5173' || isHttps) {
+        this.serverUrl = `${wsProto}//${window.location.host}/ws`;
+      } else {
+        const host = window.location.hostname || 'localhost';
+        this.serverUrl = `ws://${host}:3001`;
+      }
+    } else {
+      this.serverUrl = 'ws://localhost:3001';
+    }
   }
 
   public connect(): void {
