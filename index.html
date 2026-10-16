@@ -1,0 +1,148 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <meta name="description" content="Snaker - Jeu en ligne de serpents type Slither.io multijoueur hyper fluide à 120+ FPS en WebGL." />
+    <title>Snaker - Arène de Serpents Hyper Fluide</title>
+    <!-- Polices Google Fonts modernes -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;700;800;900&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="/src/style.css" />
+  </head>
+  <body>
+    <div id="app">
+      <!-- Conteneur PixiJS WebGL -->
+      <div id="canvas-container"></div>
+
+      <!-- Interface HUD en jeu -->
+      <div id="hud">
+        <!-- Coin Haut Gauche : Audio & Ping -->
+        <div class="hud-top-left">
+          <button id="btn-sound" class="hud-icon-btn" title="Activer / Couper le son" aria-label="Contrôle Audio">🔊</button>
+          <div class="hud-tag">
+            <span class="status-dot"></span>
+            <span id="hud-ping">Local • 0 ms</span>
+          </div>
+        </div>
+
+        <!-- Coin Haut Droit : Leaderboard -->
+        <div id="leaderboard" class="glass-panel">
+          <div class="lb-header">
+            <h3>CLASSEMENT</h3>
+          </div>
+          <div id="leaderboard-list"></div>
+        </div>
+
+        <!-- Coin Bas Gauche : Statistiques Joueur -->
+        <div id="player-stats" class="glass-panel">
+          <div class="stat-row">
+            <span class="stat-label">MASSE</span>
+            <span id="hud-score" class="stat-value highlight">30</span>
+          </div>
+          <div class="stat-row">
+            <span class="stat-label">LONGUEUR</span>
+            <span id="hud-length" class="stat-value">38</span>
+          </div>
+          <div class="stat-row">
+            <span class="stat-label">RANG</span>
+            <span id="hud-rank" class="stat-value">#1 / 15</span>
+          </div>
+          <div class="stat-row">
+            <span class="stat-label">KILLS</span>
+            <span id="hud-kills" class="stat-value accent">0</span>
+          </div>
+          <div class="stat-footer">
+            <span id="hud-fps" class="fps-indicator">60 FPS</span>
+          </div>
+        </div>
+
+        <!-- Coin Bas Droit : Radar Minimap -->
+        <div id="minimap-wrapper" class="glass-panel">
+          <canvas id="minimap-canvas"></canvas>
+          <span class="minimap-label">RADAR SPATIAL</span>
+        </div>
+      </div>
+
+      <!-- Modal de Démarrage -->
+      <div id="start-modal" class="modal-overlay">
+        <div class="modal-card">
+          <div class="logo-wrapper">
+            <h1 class="game-logo">SNAKER</h1>
+            <p class="game-tagline">ARCADE MULTIJOUEUR ULTRA-FLUIDE</p>
+          </div>
+
+          <div class="input-group">
+            <label for="player-name-input">PSEUDONYME</label>
+            <input
+              id="player-name-input"
+              type="text"
+              maxlength="16"
+              placeholder="Ex: NeonViper"
+              value="ViperPrime"
+              autocomplete="off"
+            />
+          </div>
+
+          <div class="skin-section">
+            <label>CHOISIS TON SERPENT</label>
+            <div id="skin-selector" class="skin-selector-grid"></div>
+          </div>
+
+          <button id="btn-play" class="btn-primary" type="button">
+            <span>JOUER MAINTENANT</span>
+            <div class="btn-glow"></div>
+          </button>
+
+          <div class="controls-guide">
+            <div class="guide-item">
+              <span class="key-pill">Souris</span>
+              <span>Diriger la tête</span>
+            </div>
+            <div class="guide-item">
+              <span class="key-pill">Clic Gauche / Espace</span>
+              <span>Turbo Boost</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Modal Game Over -->
+      <div id="game-over-modal" class="modal-overlay hidden">
+        <div class="modal-card game-over-card">
+          <div class="go-header">
+            <span class="go-badge">SERPENT ÉLIMINÉ</span>
+            <h2>PARTIE TERMINÉE</h2>
+          </div>
+
+          <div class="go-stats-grid">
+            <div class="go-stat-box">
+              <span class="go-label">Masse Finale</span>
+              <span id="go-final-score" class="go-val highlight">0</span>
+            </div>
+            <div class="go-stat-box">
+              <span class="go-label">Longueur</span>
+              <span id="go-final-length" class="go-val">0</span>
+            </div>
+            <div class="go-stat-box">
+              <span class="go-label">Kills Réalisés</span>
+              <span id="go-final-kills" class="go-val accent">0</span>
+            </div>
+            <div class="go-stat-box">
+              <span class="go-label">Meilleur Rang</span>
+              <span id="go-final-rank" class="go-val">#0</span>
+            </div>
+          </div>
+
+          <button id="btn-restart" class="btn-primary" type="button">
+            <span>REJOUER IMMÉDIATEMENT</span>
+            <div class="btn-glow"></div>
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
