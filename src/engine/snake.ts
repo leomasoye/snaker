@@ -21,6 +21,11 @@ export class Snake {
   public radius: number = CONFIG.BASE_RADIUS;
   public segmentSpacing: number = CONFIG.SEGMENT_SPACING;
 
+  // Cible d'interpolation pour serpents distants
+  public remoteTargetX: number = 0;
+  public remoteTargetY: number = 0;
+  public remoteTargetAngle: number = 0;
+
   // Segments du corps
   public segments: Segment[] = [];
 

@@ -178,8 +178,6 @@ export class GameRenderer {
     const minY = this.cameraY - halfH;
     const maxY = this.cameraY + halfH;
 
-    // LOD (Level of Detail) : adapter le pas de tracé des segments selon le niveau de zoom
-    const lodStep = this.cameraZoom < 0.85 ? 2 : 1;
 
     for (let s = 0; s < snakes.length; s++) {
       const snake = snakes[s];
@@ -200,9 +198,12 @@ export class GameRenderer {
       const segments = snake.segments;
       const segCount = segments.length;
 
+      // Pas de tracé adaptatif : garantit un chevauchement solide de 50%+ sans sur-tessellation CPU
+      const stride = this.cameraZoom < 0.75 ? 4 : 2;
+
       // 2. Dessiner les segments primaires en un seul appel batché
       let hasPrimary = false;
-      for (let i = 0; i < segCount; i += 2 * lodStep) {
+      for (let i = 0; i < segCount; i += stride * 2) {
         const seg = segments[i];
         if (seg.x < minX || seg.x > maxX || seg.y < minY || seg.y > maxY) continue;
 
@@ -219,7 +220,7 @@ export class GameRenderer {
 
       // 3. Dessiner les segments secondaires en un seul appel batché
       let hasSecondary = false;
-      for (let i = lodStep; i < segCount; i += 2 * lodStep) {
+      for (let i = stride; i < segCount; i += stride * 2) {
         const seg = segments[i];
         if (seg.x < minX || seg.x > maxX || seg.y < minY || seg.y > maxY) continue;
 
