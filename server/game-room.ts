@@ -14,6 +14,8 @@ interface ConnectedPlayer {
 }
 
 export class GameRoom {
+  public readonly roomId: string;
+  public readonly roomName: string;
   private players: Map<string, ConnectedPlayer> = new Map();
   private bots: BotController[] = [];
   private foodManager: FoodManager;
@@ -26,9 +28,19 @@ export class GameRoom {
 
   private nextBotId: number = 1;
 
-  constructor() {
+  constructor(roomId: string = 'arena-alpha', roomName: string = 'Arène Alpha') {
+    this.roomId = roomId;
+    this.roomName = roomName;
     this.foodManager = new FoodManager();
     this.initBots();
+  }
+
+  public getPlayerCount(): number {
+    return this.players.size;
+  }
+
+  public getBotCount(): number {
+    return this.bots.length;
   }
 
   private initBots(): void {

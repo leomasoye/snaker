@@ -19,11 +19,19 @@ export class Menu {
   private skinContainer: HTMLElement;
 
   private selectedSkinIndex: number = 0;
-  private onPlayCallback: (name: string, skin: SkinConfig) => void;
+  private selectedMode: 'multiplayer' | 'solo' = 'multiplayer';
+  private selectedRoomId: string = 'arena-alpha';
+
+  private modeMultiBtn: HTMLButtonElement | null = null;
+  private modeSoloBtn: HTMLButtonElement | null = null;
+  private roomGroupEl: HTMLElement | null = null;
+  private roomSelectEl: HTMLSelectElement | null = null;
+
+  private onPlayCallback: (name: string, skin: SkinConfig, mode: 'multiplayer' | 'solo', roomId: string) => void;
   private onOpenMenuCallback?: () => void;
 
   constructor(
-    onPlay: (name: string, skin: SkinConfig) => void,
+    onPlay: (name: string, skin: SkinConfig, mode: 'multiplayer' | 'solo', roomId: string) => void,
     onOpenMenu?: () => void
   ) {
     this.onPlayCallback = onPlay;
@@ -39,8 +47,38 @@ export class Menu {
     this.hudMenuBtn = document.getElementById('btn-hud-menu') as HTMLButtonElement | null;
     this.skinContainer = document.getElementById('skin-selector')!;
 
+    this.modeMultiBtn = document.getElementById('btn-mode-multiplayer') as HTMLButtonElement | null;
+    this.modeSoloBtn = document.getElementById('btn-mode-solo') as HTMLButtonElement | null;
+    this.roomGroupEl = document.getElementById('room-selection-group');
+    this.roomSelectEl = document.getElementById('room-select') as HTMLSelectElement | null;
+
     this.initSkinSelector();
+    this.initModeSelector();
     this.initEvents();
+  }
+
+  private initModeSelector(): void {
+    if (this.modeMultiBtn && this.modeSoloBtn) {
+      this.modeMultiBtn.addEventListener('click', () => {
+        this.selectedMode = 'multiplayer';
+        this.modeMultiBtn?.classList.add('active');
+        this.modeSoloBtn?.classList.remove('active');
+        if (this.roomGroupEl) this.roomGroupEl.style.display = 'flex';
+      });
+
+      this.modeSoloBtn.addEventListener('click', () => {
+        this.selectedMode = 'solo';
+        this.modeSoloBtn?.classList.add('active');
+        this.modeMultiBtn?.classList.remove('active');
+        if (this.roomGroupEl) this.roomGroupEl.style.display = 'none';
+      });
+    }
+
+    if (this.roomSelectEl) {
+      this.roomSelectEl.addEventListener('change', () => {
+        this.selectedRoomId = this.roomSelectEl?.value || 'arena-alpha';
+      });
+    }
   }
 
   private initSkinSelector(): void {
@@ -72,8 +110,9 @@ export class Menu {
     const handleStart = () => {
       const name = this.nameInput.value.trim() || 'ViperPrime';
       const skin = SKINS[this.selectedSkinIndex] || SKINS[0];
+      this.selectedRoomId = this.roomSelectEl ? this.roomSelectEl.value : 'arena-alpha';
       this.hideStartModal();
-      this.onPlayCallback(name, skin);
+      this.onPlayCallback(name, skin, this.selectedMode, this.selectedRoomId);
     };
 
     this.playBtn.addEventListener('click', handleStart);
@@ -114,7 +153,7 @@ export class Menu {
       this.hideGameOverModal();
       const name = this.nameInput.value.trim() || 'ViperPrime';
       const skin = SKINS[this.selectedSkinIndex] || SKINS[0];
-      this.onPlayCallback(name, skin);
+      this.onPlayCallback(name, skin, this.selectedMode, this.selectedRoomId);
     });
 
     if (this.backMenuBtn) {

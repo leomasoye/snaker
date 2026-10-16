@@ -90,6 +90,39 @@
             />
           </div>
 
+          <!-- Choix du Mode de Jeu (Multijoueur / Solo) -->
+          <div class="input-group">
+            <label>MODE DE JEU</label>
+            <div class="mode-toggle-group">
+              <button id="btn-mode-multiplayer" type="button" class="mode-toggle-btn active">
+                <span class="mode-icon">🌐</span>
+                <div class="mode-text">
+                  <span class="mode-title">Multijoueur En Ligne</span>
+                  <span class="mode-desc">Arène partagée & joueurs réels</span>
+                </div>
+              </button>
+              <button id="btn-mode-solo" type="button" class="mode-toggle-btn">
+                <span class="mode-icon">🤖</span>
+                <div class="mode-text">
+                  <span class="mode-title">Entraînement Solo</span>
+                  <span class="mode-desc">Hors-ligne avec bots locaux</span>
+                </div>
+              </button>
+            </div>
+          </div>
+
+          <!-- Choix de la Salle (Visible uniquement en multijoueur) -->
+          <div id="room-selection-group" class="input-group">
+            <div class="label-with-action">
+              <label for="room-select">SALLE MULTIJOUEUR</label>
+              <span class="room-status-badge">Partie Partagée / LAN</span>
+            </div>
+            <select id="room-select" class="room-select">
+              <option value="arena-alpha">Arène Alpha (Principale)</option>
+              <option value="arena-beta">Arène Bêta (Rapide)</option>
+            </select>
+          </div>
+
           <!-- Choix du Skin -->
           <div class="skin-section">
             <label>CHOISIS TON APPARENCE</label>

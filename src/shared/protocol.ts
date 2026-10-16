@@ -81,24 +81,36 @@ export class BinaryProtocol {
 
   // --- C2S Encode / Decode ---
 
-  // C2S_JOIN: [OpCode: 1B, SkinIdx: 1B, NameLen: 1B, NameUTF8: NB]
-  public static encodeJoin(name: string, skinIndex: number): ArrayBuffer {
+  // C2S_JOIN: [OpCode: 1B, SkinIdx: 1B, NameLen: 1B, NameUTF8: NB, RoomIdLen: 1B, RoomIdUTF8: MB]
+  public static encodeJoin(name: string, skinIndex: number, roomId: string = 'arena-alpha'): ArrayBuffer {
     const nameBytes = this.textEncoder.encode(name.slice(0, 16));
-    const buffer = new ArrayBuffer(3 + nameBytes.length);
+    const roomBytes = this.textEncoder.encode(roomId.slice(0, 24));
+    const buffer = new ArrayBuffer(4 + nameBytes.length + roomBytes.length);
     const view = new DataView(buffer);
     view.setUint8(0, OPCODES.C2S_JOIN);
     view.setUint8(1, skinIndex & 0xff);
     view.setUint8(2, nameBytes.length);
     new Uint8Array(buffer, 3).set(nameBytes);
+    const offset = 3 + nameBytes.length;
+    view.setUint8(offset, roomBytes.length);
+    new Uint8Array(buffer, offset + 1).set(roomBytes);
     return buffer;
   }
 
-  public static decodeJoin(buffer: ArrayBuffer): { name: string; skinIndex: number } {
+  public static decodeJoin(buffer: ArrayBuffer): { name: string; skinIndex: number; roomId: string } {
     const view = new DataView(buffer);
     const skinIndex = view.getUint8(1);
     const nameLen = view.getUint8(2);
     const name = this.textDecoder.decode(new Uint8Array(buffer, 3, nameLen));
-    return { name, skinIndex };
+    let roomId = 'arena-alpha';
+    const offset = 3 + nameLen;
+    if (buffer.byteLength > offset) {
+      const roomLen = view.getUint8(offset);
+      if (roomLen > 0 && buffer.byteLength >= offset + 1 + roomLen) {
+        roomId = this.textDecoder.decode(new Uint8Array(buffer, offset + 1, roomLen));
+      }
+    }
+    return { name, skinIndex, roomId };
   }
 
   // C2S_INPUT: [OpCode: 1B, AngleScaled: 2B (uint16: 0-65535 -> 0-2pi), Boost: 1B] -> Total 4B

@@ -1,24 +1,25 @@
 import { WebSocketServer, WebSocket } from 'ws';
-import { GameRoom } from './game-room';
+import { RoomManager } from './room-manager';
 import { BinaryProtocol, NetWelcomePayload, OPCODES } from '../src/shared/protocol';
 import { CONFIG } from '../src/config';
 
 const PORT = 3001;
-const wss = new WebSocketServer({ port: PORT });
-const gameRoom = new GameRoom();
+// Écoute sur 0.0.0.0 pour permettre les connexions depuis d'autres PC du réseau local (Wi-Fi/LAN)
+const wss = new WebSocketServer({ port: PORT, host: '0.0.0.0' });
+const roomManager = new RoomManager();
 
 let nextPlayerNumber = 1;
 
 console.log(`===============================================`);
 console.log(`  SNAKER SERVEUR MULTIJOUEUR TEMPS RÉEL ACTIF  `);
-console.log(`  Port: ${PORT} | Tickrate: 30 Ticks/sec         `);
+console.log(`  Port: ${PORT} | Interface: 0.0.0.0 (LAN Ready) `);
+console.log(`  Salles Actives: Alpha & Bêta (Multi-Rooms)    `);
 console.log(`===============================================`);
-
-gameRoom.start();
 
 wss.on('connection', (ws: WebSocket) => {
   const playerId = `p_${nextPlayerNumber++}`;
   let hasJoined = false;
+  let currentRoom = roomManager.getRoom('arena-alpha')!;
 
   ws.binaryType = 'arraybuffer';
 
@@ -37,17 +38,18 @@ wss.on('connection', (ws: WebSocket) => {
     const view = new DataView(arrayBuffer);
     const opcode = view.getUint8(0);
 
-    // 1. C2S_JOIN
+    // 1. C2S_JOIN (avec support multi-salles)
     if (opcode === OPCODES.C2S_JOIN) {
-      const { name, skinIndex } = BinaryProtocol.decodeJoin(arrayBuffer);
-      const snake = gameRoom.addPlayer(playerId, name, skinIndex, ws);
+      const { name, skinIndex, roomId } = BinaryProtocol.decodeJoin(arrayBuffer);
+      currentRoom = roomManager.getOrCreateRoom(roomId);
+      currentRoom.addPlayer(playerId, name, skinIndex, ws);
       hasJoined = true;
 
-      // Envoyer le paquet WELCOME avec l'état complet initial
+      // Envoyer le paquet WELCOME avec l'état complet initial de la salle choisie
       const welcomePayload: NetWelcomePayload = {
         playerId,
         worldRadius: CONFIG.WORLD_RADIUS,
-        snakes: gameRoom.getAllSnakes().map(s => ({
+        snakes: currentRoom.getAllSnakes().map(s => ({
           id: s.id,
           name: s.name,
           skinId: s.skin.id,
@@ -63,7 +65,7 @@ wss.on('connection', (ws: WebSocket) => {
           kills: s.kills,
           segments: s.segments.map(seg => ({ x: seg.x, y: seg.y, angle: seg.angle })),
         })),
-        food: gameRoom.getFullInitialFood(),
+        food: currentRoom.getFullInitialFood(),
       };
 
       const welcomePacket = BinaryProtocol.encodeJsonPacket(OPCODES.S2C_WELCOME, welcomePayload);
@@ -73,7 +75,7 @@ wss.on('connection', (ws: WebSocket) => {
     // 2. C2S_INPUT (Paquet binaire ultra-compact de 4 octets à 30-60 Hz)
     else if (opcode === OPCODES.C2S_INPUT && hasJoined) {
       const { angle, isBoosting } = BinaryProtocol.decodeInput(arrayBuffer);
-      gameRoom.handlePlayerInput(playerId, angle, isBoosting);
+      currentRoom.handlePlayerInput(playerId, angle, isBoosting);
     }
 
     // 3. C2S_PING (Calcul du temps de latence réseau aller-retour RTT)
@@ -90,7 +92,7 @@ wss.on('connection', (ws: WebSocket) => {
 
   ws.on('close', () => {
     if (hasJoined) {
-      gameRoom.removePlayer(playerId);
+      currentRoom.removePlayer(playerId);
     }
   });
 

@@ -89,9 +89,9 @@ export class NetworkClient {
     }
   }
 
-  public sendJoin(name: string, skinIndex: number): void {
+  public sendJoin(name: string, skinIndex: number, roomId: string = 'arena-alpha'): void {
     if (!this.isConnected || !this.ws || this.ws.readyState !== WebSocket.OPEN) return;
-    const packet = BinaryProtocol.encodeJoin(name, skinIndex);
+    const packet = BinaryProtocol.encodeJoin(name, skinIndex, roomId);
     this.ws.send(packet);
   }
 

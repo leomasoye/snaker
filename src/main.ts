@@ -54,7 +54,7 @@ class Game {
 
     this.hud = new HUD();
     this.menu = new Menu(
-      (name, skin) => this.startGame(name, skin),
+      (name, skin, mode, roomId) => this.startGame(name, skin, mode, roomId),
       () => this.pauseToMenu()
     );
 
@@ -342,23 +342,38 @@ class Game {
     }
   }
 
-  private startGame(playerName: string, skin: SkinConfig): void {
+  private startGame(
+    playerName: string,
+    skin: SkinConfig,
+    mode: 'multiplayer' | 'solo' = 'multiplayer',
+    roomId: string = 'arena-alpha'
+  ): void {
     const skinIndex = SKINS.findIndex(s => s.id === skin.id);
 
-    if (this.networkClient.getIsOnline()) {
+    if (mode === 'multiplayer' && this.networkClient.getIsOnline()) {
       this.isMultiplayer = true;
-      this.networkClient.sendJoin(playerName, skinIndex !== -1 ? skinIndex : 0);
+      this.networkClient.sendJoin(playerName, skinIndex !== -1 ? skinIndex : 0, roomId);
       const pos = this.findSafeSpawnLocation(700);
       this.player = new Snake(this.localPlayerId, playerName, pos.x, pos.y, skin, false, CONFIG.INITIAL_MASS);
       this.isGameActive = true;
     } else {
       this.isMultiplayer = false;
+      this.remoteSnakes.clear();
       if (this.bots.length === 0) {
         this.initBots();
       }
       const pos = this.findSafeSpawnLocation(700);
       this.player = new Snake('player', playerName, pos.x, pos.y, skin, false, CONFIG.INITIAL_MASS);
       this.isGameActive = true;
+
+      // Actualiser le HUD pour indiquer le mode solo
+      const pingEl = document.getElementById('hud-ping');
+      const dotEl = document.querySelector('.status-dot') as HTMLElement;
+      if (pingEl && dotEl) {
+        pingEl.textContent = 'Solo (Entraînement)';
+        dotEl.style.background = '#00f0ff';
+        dotEl.style.boxShadow = '0 0 8px #00f0ff';
+      }
     }
   }
 
