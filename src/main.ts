@@ -10,7 +10,7 @@ import { Menu } from './ui/menu';
 import { soundManager } from './audio/sound';
 import { CONFIG, SKINS } from './config';
 import { angleDiff, normalizeAngle } from './engine/math';
-import type { LeaderboardEntry, SkinConfig } from './types';
+import type { FoodOrb, LeaderboardEntry, SkinConfig } from './types';
 import { NetworkClient } from './network/client';
 import type { NetTickPayload } from './shared/protocol';
 
@@ -96,7 +96,63 @@ class Game {
     this.networkClient.onWelcome = (payload) => {
       this.isMultiplayer = true;
       this.localPlayerId = payload.playerId;
-      console.log(`[Multiplayer] Identifiant assigné par le serveur : ${this.localPlayerId}`);
+      console.log(`[Multiplayer] Connecté à la salle | ID: ${this.localPlayerId}`);
+
+      // 1. Synchronisation intégrale de la nourriture du serveur (0 orbe fantôme)
+      const serverFood: FoodOrb[] = payload.food.map(f => ({
+        id: f.id,
+        x: f.x,
+        y: f.y,
+        radius: f.radius,
+        value: f.value,
+        color: f.color || 0x00f0ff,
+        colorIndex: f.colorIndex,
+        glowColor: `#${(f.color || 0x00f0ff).toString(16).padStart(6, '0')}`,
+        phase: Math.random() * Math.PI * 2,
+      }));
+      this.foodManager.setOrbs(serverFood);
+
+      // 2. Initialiser le serpent du joueur aux coordonnées exactes de spawn du serveur
+      const serverSnake = payload.snakes.find(s => s.id === payload.playerId);
+      if (serverSnake) {
+        const skin = SKINS.find(s => s.id === serverSnake.skinId) || SKINS[0];
+        this.player = new Snake(
+          this.localPlayerId,
+          serverSnake.name,
+          serverSnake.x,
+          serverSnake.y,
+          skin,
+          false,
+          serverSnake.mass
+        );
+        this.player.angle = serverSnake.angle;
+        this.player.targetAngle = serverSnake.angle;
+        this.player.radius = serverSnake.radius;
+        this.player.speed = serverSnake.speed;
+        this.player.segments = serverSnake.segments.map(seg => ({
+          x: seg.x,
+          y: seg.y,
+          angle: seg.angle,
+        }));
+        this.player.updateAABB();
+        this.isGameActive = true;
+      }
+
+      // 3. Initialiser les autres serpents
+      this.remoteSnakes.clear();
+      for (let i = 0; i < payload.snakes.length; i++) {
+        const s = payload.snakes[i];
+        if (s.id === payload.playerId) continue;
+        const skin = SKINS.find(sk => sk.id === s.skinId) || SKINS[0];
+        const remote = new Snake(s.id, s.name, s.x, s.y, skin, s.isBot, s.mass);
+        remote.angle = s.angle;
+        remote.remoteTargetX = s.x;
+        remote.remoteTargetY = s.y;
+        remote.remoteTargetAngle = s.angle;
+        remote.segments = s.segments.map(seg => ({ x: seg.x, y: seg.y, angle: seg.angle }));
+        remote.updateAABB();
+        this.remoteSnakes.set(s.id, remote);
+      }
     };
 
     this.networkClient.onTick = (payload: NetTickPayload) => {
@@ -127,7 +183,10 @@ class Game {
     // 1. Mettre à jour les orbes ajoutés et supprimés par le serveur (Delta synchro)
     for (let i = 0; i < payload.addedFood.length; i++) {
       const f = payload.addedFood[i];
-      this.foodManager.spawnBoostDrop(f.x, f.y, f.color);
+      const existing = this.foodManager.getAllOrbs().find(o => o.id === f.id);
+      if (!existing) {
+        this.foodManager.spawnBoostDrop(f.x, f.y, f.color || 0x00f0ff);
+      }
     }
     for (let i = 0; i < payload.removedFoodIds.length; i++) {
       const id = payload.removedFoodIds[i];
@@ -143,16 +202,24 @@ class Game {
       activeServerIds.add(netSnake.id);
 
       if (netSnake.id === this.localPlayerId && this.player) {
-        // Réconciliation locale : masse et éliminations autoritaires
-        this.player.mass = netSnake.mass;
-        this.player.kills = netSnake.kills;
+        // Réconciliation autoritaire : la masse ne baisse jamais par lag
+        this.player.mass = Math.max(this.player.mass, netSnake.mass);
+        this.player.kills = Math.max(this.player.kills, netSnake.kills);
+        this.player.updateRadius();
 
-        // Si divergence de position majeure (>120px) avec le serveur, recaler
-        const distSq = (netSnake.x - this.player.x) ** 2 + (netSnake.y - this.player.y) ** 2;
-        if (distSq > 14400) {
+        // Lissage doux (15% par tick) : compense la latence réseau sans AUCUNE téléportation
+        const dx = netSnake.x - this.player.x;
+        const dy = netSnake.y - this.player.y;
+        const distSq = dx * dx + dy * dy;
+
+        if (distSq > 90000) {
+          // Téléportation de secours uniquement si anomalie extrême (>300px)
           this.player.x = netSnake.x;
           this.player.y = netSnake.y;
           this.player.angle = netSnake.angle;
+        } else if (distSq > 9) {
+          this.player.x += dx * 0.15;
+          this.player.y += dy * 0.15;
         }
         continue;
       }
@@ -353,9 +420,8 @@ class Game {
     if (mode === 'multiplayer' && this.networkClient.getIsOnline()) {
       this.isMultiplayer = true;
       this.networkClient.sendJoin(playerName, skinIndex !== -1 ? skinIndex : 0, roomId);
-      const pos = this.findSafeSpawnLocation(700);
-      this.player = new Snake(this.localPlayerId, playerName, pos.x, pos.y, skin, false, CONFIG.INITIAL_MASS);
-      this.isGameActive = true;
+      // En multijoueur, le joueur et la nourriture sont initialisés directement dans onWelcome
+      // pour garantir une position et des orbes 100% synchronisés avec le serveur.
     } else {
       this.isMultiplayer = false;
       this.remoteSnakes.clear();

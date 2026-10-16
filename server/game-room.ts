@@ -145,12 +145,24 @@ export class GameRoom {
     if (player) {
       if (player.snake.isAlive) {
         // Faire tomber sa nourriture pour les autres joueurs
-        this.foodManager.spawnCorpseFood(
+        const corpseOrbs = this.foodManager.spawnCorpseFood(
           player.snake.x,
           player.snake.y,
           player.snake.segments,
           player.snake.skin.primaryColor
         );
+        for (let k = 0; k < corpseOrbs.length; k++) {
+          const orb = corpseOrbs[k];
+          this.addedFoodDelta.push({
+            id: orb.id,
+            x: orb.x,
+            y: orb.y,
+            radius: orb.radius,
+            value: orb.value,
+            color: orb.color,
+            colorIndex: orb.colorIndex,
+          });
+        }
       }
       this.players.delete(id);
       console.log(`[GameRoom] Joueur déconnecté : ${player.name} (${id})`);
@@ -258,8 +270,19 @@ export class GameRoom {
       for (let j = 0; j < nearbyOrbs.length; j++) {
         const orb = nearbyOrbs[j];
         snake.eatFood(orb.value);
-        this.foodManager.removeOrb(orb);
+        const replenish = this.foodManager.removeOrb(orb);
         this.removedFoodIdsDelta.push(orb.id);
+        if (replenish) {
+          this.addedFoodDelta.push({
+            id: replenish.id,
+            x: replenish.x,
+            y: replenish.y,
+            radius: replenish.radius,
+            value: replenish.value,
+            color: replenish.color,
+            colorIndex: replenish.colorIndex,
+          });
+        }
       }
     }
 
@@ -295,13 +318,25 @@ export class GameRoom {
   }
 
   private handleSnakeDeath(deadSnake: Snake, killerName: string): void {
-    // Éjection massive d'orbes
-    this.foodManager.spawnCorpseFood(
+    // Éjection massive d'orbes et synchronisation réseau
+    const corpseOrbs = this.foodManager.spawnCorpseFood(
       deadSnake.x,
       deadSnake.y,
       deadSnake.segments,
       deadSnake.skin.primaryColor
     );
+    for (let k = 0; k < corpseOrbs.length; k++) {
+      const orb = corpseOrbs[k];
+      this.addedFoodDelta.push({
+        id: orb.id,
+        x: orb.x,
+        y: orb.y,
+        radius: orb.radius,
+        value: orb.value,
+        color: orb.color,
+        colorIndex: orb.colorIndex,
+      });
+    }
 
     // Notifier le joueur s'il est humain
     const player = this.players.get(deadSnake.id);

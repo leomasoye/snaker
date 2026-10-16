@@ -85,19 +85,20 @@ export class FoodManager {
   }
 
   // Éjection garantie d'orbes massifs à la mort du serpent, même s'il vient de naître !
-  public spawnCorpseFood(headX: number, headY: number, segments: { x: number; y: number }[], color: number): void {
+  public spawnCorpseFood(headX: number, headY: number, segments: { x: number; y: number }[], color: number): FoodOrb[] {
+    const created: FoodOrb[] = [];
     // 1. Explosion garantie de 10 à 15 orbes autour de la tête
     const headCount = Math.floor(randomRange(10, 16));
     for (let k = 0; k < headCount; k++) {
       const angle = Math.random() * Math.PI * 2;
       const dist = randomRange(6, 45);
       const value = Math.floor(randomRange(4, 8));
-      this.createOrbAt(
+      created.push(this.createOrbAt(
         headX + Math.cos(angle) * dist,
         headY + Math.sin(angle) * dist,
         value,
         color
-      );
+      ));
     }
 
     // 2. Orbes le long des anneaux du corps (avec un minimum de 12 orbes le long de la colonne)
@@ -109,18 +110,19 @@ export class FoodManager {
         const count = Math.floor(randomRange(1, 3));
         for (let j = 0; j < count; j++) {
           const value = Math.floor(randomRange(3, 7));
-          this.createOrbAt(
+          created.push(this.createOrbAt(
             seg.x + randomRange(-16, 16),
             seg.y + randomRange(-16, 16),
             value,
             color
-          );
+          ));
         }
       }
     }
+    return created;
   }
 
-  public removeOrb(orb: FoodOrb): void {
+  public removeOrb(orb: FoodOrb): FoodOrb | null {
     this.grid.remove(orb);
     const index = this.orbs.indexOf(orb);
     if (index !== -1) {
@@ -131,7 +133,22 @@ export class FoodManager {
     }
 
     if (this.orbs.length < CONFIG.FOOD_COUNT) {
-      this.spawnRandomOrb();
+      return this.spawnRandomOrb();
+    }
+    return null;
+  }
+
+  public clearAll(): void {
+    this.orbs = [];
+    this.grid = new SpatialGrid<FoodOrb>(CONFIG.FOOD_CELL_SIZE);
+  }
+
+  public setOrbs(newOrbs: FoodOrb[]): void {
+    this.clearAll();
+    for (let i = 0; i < newOrbs.length; i++) {
+      const o = newOrbs[i];
+      this.orbs.push(o);
+      this.grid.insert(o);
     }
   }
 
