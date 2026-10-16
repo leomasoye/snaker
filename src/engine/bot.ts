@@ -17,10 +17,11 @@ export class BotController {
   constructor(id: string, x: number, y: number) {
     const name = BOT_NAMES[Math.floor(Math.random() * BOT_NAMES.length)];
     const skin = SKINS[Math.floor(Math.random() * SKINS.length)];
-    const initialMass = Math.floor(randomRange(25, 120));
+    // Poids de départ varié pour un écosystème dynamique
+    const initialMass = Math.floor(randomRange(30, 160));
 
     this.snake = new Snake(id, name, x, y, skin, true, initialMass);
-    this.changeDirTimer = randomRange(1, 3);
+    this.changeDirTimer = randomRange(0.2, 0.6);
   }
 
   public update(
@@ -37,48 +38,57 @@ export class BotController {
 
     // 1. Évitement de la frontière de l'arène (priorité absolue)
     const distFromCenter = Math.hypot(this.snake.x, this.snake.y);
-    if (distFromCenter > CONFIG.WORLD_RADIUS * 0.85) {
-      // Revenir vers le centre de l'arène (0, 0)
+    if (distFromCenter > CONFIG.WORLD_RADIUS * 0.82) {
       this.snake.setTargetDirection(0, 0);
       this.snake.isBoosting = false;
       this.snake.update(dt, onDropFood, onBoostParticle);
       return;
     }
 
-    // 2. Détection d'obstacles (corps des autres serpents)
+    // 2. Détection d'obstacles (corps des autres serpents) avec sonde avant
     let dangerFound = false;
-    const lookAheadDist = 80 + this.snake.speed * 0.4;
+    const lookAheadDist = 80 + this.snake.speed * 0.45;
     const probeX = this.snake.x + Math.cos(this.snake.angle) * lookAheadDist;
     const probeY = this.snake.y + Math.sin(this.snake.angle) * lookAheadDist;
 
-    for (const other of allSnakes) {
-      if (!other.isAlive) continue;
-      // Ne pas vérifier la tête avec nos propres segments proches
+    for (let i = 0; i < allSnakes.length; i++) {
+      const other = allSnakes[i];
+      if (!other.isAlive || other === this.snake) continue;
+
       if (other.checkHeadCollisionWithBody(probeX, probeY, this.snake.radius + 15)) {
         dangerFound = true;
-        // Virer brusquement à gauche ou à droite
+        // Virer rapidement du côté opposé
         const turnRight = Math.sin(this.snake.angle) * (probeX - this.snake.x) > 0;
-        const escapeAngle = this.snake.angle + (turnRight ? -Math.PI * 0.55 : Math.PI * 0.55);
+        const escapeAngle = this.snake.angle + (turnRight ? -Math.PI * 0.6 : Math.PI * 0.6);
         this.snake.targetAngle = escapeAngle;
-        this.snake.isBoosting = true; // boost d'urgence pour s'échapper
+        this.snake.isBoosting = true; // boost d'urgence réflexe
+        this.boostCooldown = 1.0;
         break;
       }
     }
 
     if (!dangerFound) {
-      // 3. Recherche de nourriture
-      if (this.changeDirTimer <= 0) {
-        this.changeDirTimer = randomRange(0.8, 2.0);
+      // 3. Volonté accrue de grandir (Recherche active et fréquente d'orbes)
+      const isHungry = this.snake.mass < 300;
+      const recheckInterval = isHungry ? 0.3 : 0.7;
 
-        const nearbyOrbs = foodManager.getOrbsInRadius(this.snake.x, this.snake.y, CONFIG.BOT_VIEW_DISTANCE);
+      if (this.changeDirTimer <= 0) {
+        this.changeDirTimer = randomRange(recheckInterval * 0.8, recheckInterval * 1.3);
+
+        const viewDistance = 750; // Rayon de perception étendu
+        const nearbyOrbs = foodManager.getOrbsInRadius(this.snake.x, this.snake.y, viewDistance);
+
         if (nearbyOrbs.length > 0) {
-          // Trouver l'orbe avec le meilleur ratio valeur / distance
           let bestOrb = nearbyOrbs[0];
           let bestScore = -1;
 
-          for (const orb of nearbyOrbs) {
+          const len = nearbyOrbs.length;
+          // Échantillonner les orbes pour trouver la pépite la plus rentable
+          for (let i = 0; i < len; i++) {
+            const orb = nearbyOrbs[i];
             const d = distance(this.snake.x, this.snake.y, orb.x, orb.y);
-            const score = (orb.value * 100) / (d + 20);
+            // Pondérer fortement les orbes de haute valeur (cadavres)
+            const score = (orb.value * 180) / (d + 15);
             if (score > bestScore) {
               bestScore = score;
               bestOrb = orb;
@@ -87,16 +97,17 @@ export class BotController {
 
           this.snake.setTargetDirection(bestOrb.x, bestOrb.y);
 
-          // Si c'est un orbe de grande valeur et qu'on est assez lourd, activer le boost
-          if (bestOrb.value >= 4 && this.snake.mass > 40 && this.boostCooldown <= 0) {
+          // Sprint turbo pour manger rapidement si la cible est de haute valeur
+          if (bestOrb.value >= 3 && this.snake.mass > 35 && this.boostCooldown <= 0) {
             this.snake.isBoosting = true;
-            this.boostCooldown = randomRange(2.0, 4.0);
-          } else {
+            this.boostCooldown = randomRange(1.2, 2.5);
+          } else if (this.boostCooldown <= 0) {
             this.snake.isBoosting = false;
           }
         } else {
-          // Navigation d'ambiance aléatoire
-          const wanderAngle = this.snake.angle + (Math.random() - 0.5) * 1.2;
+          // Errance active orientée vers l'intérieur de l'arène
+          const toCenterAngle = Math.atan2(-this.snake.y, -this.snake.x);
+          const wanderAngle = toCenterAngle + (Math.random() - 0.5) * 1.4;
           this.snake.targetAngle = wanderAngle;
           this.snake.isBoosting = false;
         }

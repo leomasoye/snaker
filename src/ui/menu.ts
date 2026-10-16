@@ -1,25 +1,42 @@
 import { SKINS } from '../config';
 import type { SkinConfig } from '../types';
 
+const FUN_NAMES = [
+  'ViperPrime', 'CyberWorm', 'NeonStalker', 'CosmicBoa', 'PixelPython',
+  'SolarFang', 'ToxicTitan', 'HyperGlider', 'QuantumTail', 'AstroViper',
+  'GhostDragon', 'OmegaSerpent', 'ZenithGlow', 'NovaStriker', 'ShadowPulse'
+];
+
 export class Menu {
   private startModal: HTMLElement;
   private gameOverModal: HTMLElement;
   private nameInput: HTMLInputElement;
   private playBtn: HTMLButtonElement;
   private restartBtn: HTMLButtonElement;
+  private backMenuBtn: HTMLButtonElement | null;
+  private randomNameBtn: HTMLButtonElement | null;
+  private hudMenuBtn: HTMLButtonElement | null;
   private skinContainer: HTMLElement;
 
   private selectedSkinIndex: number = 0;
   private onPlayCallback: (name: string, skin: SkinConfig) => void;
+  private onOpenMenuCallback?: () => void;
 
-  constructor(onPlay: (name: string, skin: SkinConfig) => void) {
+  constructor(
+    onPlay: (name: string, skin: SkinConfig) => void,
+    onOpenMenu?: () => void
+  ) {
     this.onPlayCallback = onPlay;
+    this.onOpenMenuCallback = onOpenMenu;
 
     this.startModal = document.getElementById('start-modal')!;
     this.gameOverModal = document.getElementById('game-over-modal')!;
     this.nameInput = document.getElementById('player-name-input') as HTMLInputElement;
     this.playBtn = document.getElementById('btn-play') as HTMLButtonElement;
     this.restartBtn = document.getElementById('btn-restart') as HTMLButtonElement;
+    this.backMenuBtn = document.getElementById('btn-back-menu') as HTMLButtonElement | null;
+    this.randomNameBtn = document.getElementById('btn-random-name') as HTMLButtonElement | null;
+    this.hudMenuBtn = document.getElementById('btn-hud-menu') as HTMLButtonElement | null;
     this.skinContainer = document.getElementById('skin-selector')!;
 
     this.initSkinSelector();
@@ -53,7 +70,7 @@ export class Menu {
 
   private initEvents(): void {
     const handleStart = () => {
-      const name = this.nameInput.value.trim() || 'NeonGhost';
+      const name = this.nameInput.value.trim() || 'ViperPrime';
       const skin = SKINS[this.selectedSkinIndex] || SKINS[0];
       this.hideStartModal();
       this.onPlayCallback(name, skin);
@@ -64,12 +81,51 @@ export class Menu {
       if (e.key === 'Enter') handleStart();
     });
 
+    if (this.randomNameBtn) {
+      this.randomNameBtn.addEventListener('click', () => {
+        const randomName = FUN_NAMES[Math.floor(Math.random() * FUN_NAMES.length)];
+        this.nameInput.value = randomName;
+      });
+    }
+
+    if (this.hudMenuBtn) {
+      this.hudMenuBtn.addEventListener('click', () => {
+        if (this.onOpenMenuCallback) {
+          this.onOpenMenuCallback();
+        }
+        this.showStartModal();
+      });
+    }
+
+    window.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') {
+        if (this.startModal.classList.contains('hidden')) {
+          if (this.onOpenMenuCallback) {
+            this.onOpenMenuCallback();
+          }
+          this.showStartModal();
+        } else {
+          handleStart();
+        }
+      }
+    });
+
     this.restartBtn.addEventListener('click', () => {
       this.hideGameOverModal();
-      const name = this.nameInput.value.trim() || 'NeonGhost';
+      const name = this.nameInput.value.trim() || 'ViperPrime';
       const skin = SKINS[this.selectedSkinIndex] || SKINS[0];
       this.onPlayCallback(name, skin);
     });
+
+    if (this.backMenuBtn) {
+      this.backMenuBtn.addEventListener('click', () => {
+        this.hideGameOverModal();
+        if (this.onOpenMenuCallback) {
+          this.onOpenMenuCallback();
+        }
+        this.showStartModal();
+      });
+    }
   }
 
   public showStartModal(): void {

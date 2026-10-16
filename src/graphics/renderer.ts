@@ -5,6 +5,7 @@ import { FoodManager } from '../engine/food-manager';
 import { ParticleSystem } from '../engine/particle-system';
 import { VIBRANT_PALETTE } from '../engine/math';
 import { clamp } from '../engine/math';
+import type { FoodOrb } from '../types';
 
 export class GameRenderer {
   public app: Application;
@@ -17,6 +18,9 @@ export class GameRenderer {
   // Cache des étiquettes de noms
   private nameLabels: Map<string, Text> = new Map();
   private nameContainer: Container;
+
+  // Pré-allocation des bacs de couleurs d'orbes pour un coût mémoire 0
+  private foodBuckets: FoodOrb[][] = Array.from({ length: VIBRANT_PALETTE.length }, () => []);
 
   // Caméra
   public cameraX: number = 0;
@@ -37,9 +41,9 @@ export class GameRenderer {
     await this.app.init({
       resizeTo: window,
       backgroundColor: CONFIG.BACKGROUND_COLOR,
-      antialias: true,
-      resolution: window.devicePixelRatio || 1,
-      autoDensity: true,
+      antialias: false,               // Élimine le coût MSAA très lourd sur GPU intégré
+      resolution: 1,                   // Ratio 1:1 pour éviter de rendre en 4K sur laptop
+      autoDensity: false,
       powerPreference: 'high-performance',
     });
 
@@ -60,26 +64,27 @@ export class GameRenderer {
     const bg = this.bgGraphics;
     bg.clear();
 
-    const gridSpacing = CONFIG.GRID_SIZE;
     const r = CONFIG.WORLD_RADIUS;
 
-    // Lignes de grille de fond
-    for (let x = -r; x <= r; x += gridSpacing) {
-      const halfH = Math.sqrt(Math.max(0, r * r - x * x));
-      bg.moveTo(x, -halfH).lineTo(x, halfH).stroke({ width: 1, color: CONFIG.GRID_COLOR, alpha: 0.5 });
-    }
-    for (let y = -r; y <= r; y += gridSpacing) {
-      const halfW = Math.sqrt(Math.max(0, r * r - y * y));
-      bg.moveTo(-halfW, y).lineTo(halfW, y).stroke({ width: 1, color: CONFIG.GRID_COLOR, alpha: 0.5 });
+    // Fond plein
+    bg.circle(0, 0, r + 200).fill({ color: CONFIG.BACKGROUND_COLOR });
+
+    // Cercles concentriques de repère spatiaux (léger et épuré)
+    for (let rad = 500; rad < r; rad += 600) {
+      bg.circle(0, 0, rad).stroke({ width: 1.5, color: CONFIG.GRID_COLOR, alpha: 0.6 });
     }
 
-    // Barrière néon circulaire d'arène
-    bg.circle(0, 0, r).stroke({ width: 14, color: CONFIG.ARENA_LINE_COLOR, alpha: 0.2 });
+    // Axes orthogonaux légers
+    bg.moveTo(-r, 0).lineTo(r, 0).stroke({ width: 1.5, color: CONFIG.GRID_COLOR, alpha: 0.7 });
+    bg.moveTo(0, -r).lineTo(0, r).stroke({ width: 1.5, color: CONFIG.GRID_COLOR, alpha: 0.7 });
+
+    // Barrière néon circulaire d'arène (3 couches lumineuses)
+    bg.circle(0, 0, r).stroke({ width: 14, color: CONFIG.ARENA_LINE_COLOR, alpha: 0.22 });
     bg.circle(0, 0, r).stroke({ width: 5, color: 0xffffff, alpha: 0.85 });
     bg.circle(0, 0, r).stroke({ width: 2, color: CONFIG.ARENA_LINE_COLOR, alpha: 1.0 });
 
     // Zone hors limites
-    bg.circle(0, 0, r + 150).stroke({ width: 25, color: 0xff0055, alpha: 0.12 });
+    bg.circle(0, 0, r + 120).stroke({ width: 20, color: 0xff0055, alpha: 0.12 });
   }
 
   public updateCamera(targetX: number, targetY: number, targetMass: number, dt: number): void {
@@ -103,7 +108,7 @@ export class GameRenderer {
     this.worldContainer.position.set(screenW / 2, screenH / 2);
   }
 
-  public renderFood(foodManager: FoodManager, time: number): void {
+  public renderFood(foodManager: FoodManager): void {
     const g = this.foodGraphics;
     g.clear();
 
@@ -122,24 +127,27 @@ export class GameRenderer {
     const totalVisible = visibleOrbs.length;
     if (totalVisible === 0) return;
 
-    // Zéro allocation : batching direct par couleur de la palette
-    for (let c = 0; c < VIBRANT_PALETTE.length; c++) {
-      const color = VIBRANT_PALETTE[c];
-      let hasOrbs = false;
-
-      for (let i = 0; i < totalVisible; i++) {
-        const orb = visibleOrbs[i];
-        if (orb.color === color) {
-          const pulse = Math.sin(time * 3 + orb.phase) * 0.15 + 1.0;
-          const r = orb.radius * pulse;
-          g.circle(orb.x, orb.y, r);
-          hasOrbs = true;
-        }
+    // 1. Distribution en une passe unique dans les 8 bacs de couleurs (Zéro allocation)
+    for (let i = 0; i < totalVisible; i++) {
+      const orb = visibleOrbs[i];
+      const idx = orb.colorIndex;
+      if (idx >= 0 && idx < 8) {
+        this.foodBuckets[idx].push(orb);
       }
+    }
 
-      if (hasOrbs) {
-        g.fill({ color, alpha: 0.95 });
+    // 2. Dessiner chaque couleur en un seul appel GPU batché
+    for (let c = 0; c < 8; c++) {
+      const bucket = this.foodBuckets[c];
+      const bLen = bucket.length;
+      if (bLen === 0) continue;
+
+      for (let i = 0; i < bLen; i++) {
+        const orb = bucket[i];
+        g.circle(orb.x, orb.y, orb.radius);
       }
+      g.fill({ color: VIBRANT_PALETTE[c], alpha: 0.95 });
+      bucket.length = 0; // Réinitialiser sans réallouer
     }
   }
 
@@ -162,28 +170,40 @@ export class GameRenderer {
 
     const screenW = this.app.screen.width;
     const screenH = this.app.screen.height;
-    const halfW = (screenW / 2) / this.cameraZoom + 150;
-    const halfH = (screenH / 2) / this.cameraZoom + 150;
+    const halfW = (screenW / 2) / this.cameraZoom + 120;
+    const halfH = (screenH / 2) / this.cameraZoom + 120;
 
     const minX = this.cameraX - halfW;
     const maxX = this.cameraX + halfW;
     const minY = this.cameraY - halfH;
     const maxY = this.cameraY + halfH;
 
+    // LOD (Level of Detail) : adapter le pas de tracé des segments selon le niveau de zoom
+    const lodStep = this.cameraZoom < 0.85 ? 2 : 1;
+
     for (let s = 0; s < snakes.length; s++) {
       const snake = snakes[s];
       if (!snake.isAlive) continue;
       activeIds.add(snake.id);
 
+      // 1. Broadphase Culling : si le serpent entier est hors de l'écran, passer directement
+      if (
+        snake.maxX < minX ||
+        snake.minX > maxX ||
+        snake.maxY < minY ||
+        snake.minY > maxY
+      ) {
+        continue;
+      }
+
       const radius = snake.radius;
       const segments = snake.segments;
       const segCount = segments.length;
 
-      // 1. Dessiner les segments primaires en un seul appel batché
+      // 2. Dessiner les segments primaires en un seul appel batché
       let hasPrimary = false;
-      for (let i = 0; i < segCount; i += 2) {
+      for (let i = 0; i < segCount; i += 2 * lodStep) {
         const seg = segments[i];
-        // Culling écran
         if (seg.x < minX || seg.x > maxX || seg.y < minY || seg.y > maxY) continue;
 
         let taper = 1.0;
@@ -197,9 +217,9 @@ export class GameRenderer {
         g.fill({ color: snake.skin.primaryColor, alpha: 0.98 });
       }
 
-      // 2. Dessiner les segments secondaires en un seul appel batché
+      // 3. Dessiner les segments secondaires en un seul appel batché
       let hasSecondary = false;
-      for (let i = 1; i < segCount; i += 2) {
+      for (let i = lodStep; i < segCount; i += 2 * lodStep) {
         const seg = segments[i];
         if (seg.x < minX || seg.x > maxX || seg.y < minY || seg.y > maxY) continue;
 
@@ -214,7 +234,7 @@ export class GameRenderer {
         g.fill({ color: snake.skin.secondaryColor, alpha: 0.98 });
       }
 
-      // 3. Dessiner la tête (si visible)
+      // 4. Dessiner la tête (si visible)
       if (snake.x >= minX && snake.x <= maxX && snake.y >= minY && snake.y <= maxY) {
         // Tête pleine
         g.circle(snake.x, snake.y, radius * 1.1).fill({ color: snake.skin.primaryColor, alpha: 1.0 });
@@ -257,7 +277,7 @@ export class GameRenderer {
         g.circle(rightPupilX - catchDist, rightPupilY - catchDist, pupilRadius * 0.35);
         g.fill({ color: 0xffffff });
 
-        // 4. Étiquette de nom
+        // 5. Étiquette de nom
         let label = this.nameLabels.get(snake.id);
         if (!label) {
           label = new Text({

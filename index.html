@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-    <meta name="description" content="Snaker - Jeu en ligne de serpents type Slither.io multijoueur hyper fluide à 120+ FPS en WebGL." />
+    <meta name="description" content="Snaker - Jeu en ligne de serpents type Slither.io multijoueur hyper fluide à 60+ FPS en WebGL." />
     <title>Snaker - Arène de Serpents Hyper Fluide</title>
     <!-- Polices Google Fonts modernes -->
     <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -18,8 +18,9 @@
 
       <!-- Interface HUD en jeu -->
       <div id="hud">
-        <!-- Coin Haut Gauche : Audio & Ping -->
+        <!-- Coin Haut Gauche : Menu, Audio & Statut -->
         <div class="hud-top-left">
+          <button id="btn-hud-menu" class="hud-icon-btn" title="Ouvrir le Menu (Échap)" aria-label="Menu Principal">🏠</button>
           <button id="btn-sound" class="hud-icon-btn" title="Activer / Couper le son" aria-label="Contrôle Audio">🔊</button>
           <div class="hud-tag">
             <span class="status-dot"></span>
@@ -39,15 +40,15 @@
         <div id="player-stats" class="glass-panel">
           <div class="stat-row">
             <span class="stat-label">MASSE</span>
-            <span id="hud-score" class="stat-value highlight">30</span>
+            <span id="hud-score" class="stat-value highlight">35</span>
           </div>
           <div class="stat-row">
             <span class="stat-label">LONGUEUR</span>
-            <span id="hud-length" class="stat-value">38</span>
+            <span id="hud-length" class="stat-value">57</span>
           </div>
           <div class="stat-row">
             <span class="stat-label">RANG</span>
-            <span id="hud-rank" class="stat-value">#1 / 15</span>
+            <span id="hud-rank" class="stat-value">#1 / 13</span>
           </div>
           <div class="stat-row">
             <span class="stat-label">KILLS</span>
@@ -65,7 +66,7 @@
         </div>
       </div>
 
-      <!-- Modal de Démarrage -->
+      <!-- Menu Principal (Sans profil / Stockage) -->
       <div id="start-modal" class="modal-overlay">
         <div class="modal-card">
           <div class="logo-wrapper">
@@ -73,8 +74,12 @@
             <p class="game-tagline">ARCADE MULTIJOUEUR ULTRA-FLUIDE</p>
           </div>
 
+          <!-- Choix du Pseudonyme (Temporaire) -->
           <div class="input-group">
-            <label for="player-name-input">PSEUDONYME</label>
+            <div class="label-with-action">
+              <label for="player-name-input">PSEUDONYME DE PARTIE</label>
+              <button id="btn-random-name" type="button" class="btn-text-action" title="Générer un pseudo aléatoire">🎲 Aléatoire</button>
+            </div>
             <input
               id="player-name-input"
               type="text"
@@ -85,24 +90,31 @@
             />
           </div>
 
+          <!-- Choix du Skin -->
           <div class="skin-section">
-            <label>CHOISIS TON SERPENT</label>
+            <label>CHOISIS TON APPARENCE</label>
             <div id="skin-selector" class="skin-selector-grid"></div>
           </div>
 
+          <!-- Bouton Principal de Lancement -->
           <button id="btn-play" class="btn-primary" type="button">
-            <span>JOUER MAINTENANT</span>
+            <span>ENTRER DANS L'ARÈNE</span>
             <div class="btn-glow"></div>
           </button>
 
+          <!-- Guide des Contrôles -->
           <div class="controls-guide">
             <div class="guide-item">
               <span class="key-pill">Souris</span>
               <span>Diriger la tête</span>
             </div>
             <div class="guide-item">
-              <span class="key-pill">Clic Gauche / Espace</span>
+              <span class="key-pill">Clic / Espace</span>
               <span>Turbo Boost</span>
+            </div>
+            <div class="guide-item">
+              <span class="key-pill">Échap</span>
+              <span>Menu</span>
             </div>
           </div>
         </div>
@@ -122,7 +134,7 @@
               <span id="go-final-score" class="go-val highlight">0</span>
             </div>
             <div class="go-stat-box">
-              <span class="go-label">Longueur</span>
+              <span class="go-label">Longueur Max</span>
               <span id="go-final-length" class="go-val">0</span>
             </div>
             <div class="go-stat-box">
@@ -135,10 +147,15 @@
             </div>
           </div>
 
-          <button id="btn-restart" class="btn-primary" type="button">
-            <span>REJOUER IMMÉDIATEMENT</span>
-            <div class="btn-glow"></div>
-          </button>
+          <div class="go-buttons-row">
+            <button id="btn-restart" class="btn-primary" type="button">
+              <span>REJOUER DIRECTEMENT</span>
+              <div class="btn-glow"></div>
+            </button>
+            <button id="btn-back-menu" class="btn-secondary" type="button">
+              <span>RETOUR AU MENU</span>
+            </button>
+          </div>
         </div>
       </div>
     </div>

@@ -1,7 +1,7 @@
 import type { FoodOrb } from '../types';
 import { CONFIG } from '../config';
 import { SpatialGrid } from './spatial-grid';
-import { getRandomVibrantColor, randomRange } from './math';
+import { getColorIndex, getRandomVibrantColorIndex, randomRange } from './math';
 
 export class FoodManager {
   private orbs: FoodOrb[] = [];
@@ -20,15 +20,14 @@ export class FoodManager {
   }
 
   public spawnRandomOrb(): FoodOrb {
-    // Coordonnées aléatoires à l'intérieur du disque de l'arène
     const angle = Math.random() * Math.PI * 2;
     const r = Math.sqrt(Math.random()) * (CONFIG.WORLD_RADIUS * 0.95);
     const x = Math.cos(angle) * r;
     const y = Math.sin(angle) * r;
 
     const value = Math.floor(randomRange(CONFIG.MIN_FOOD_VALUE, CONFIG.MAX_FOOD_VALUE + 0.99));
-    const radius = 3.5 + value * 1.5;
-    const color = getRandomVibrantColor();
+    const radius = 3.5 + value * 1.4;
+    const { color, index: colorIndex } = getRandomVibrantColorIndex();
 
     const orb: FoodOrb = {
       id: this.nextId++,
@@ -37,6 +36,7 @@ export class FoodManager {
       radius,
       value,
       color,
+      colorIndex,
       glowColor: `#${color.toString(16).padStart(6, '0')}`,
       phase: Math.random() * Math.PI * 2,
     };
@@ -47,6 +47,7 @@ export class FoodManager {
   }
 
   public spawnBoostDrop(x: number, y: number, color: number): FoodOrb {
+    const colorIndex = getColorIndex(color);
     const orb: FoodOrb = {
       id: this.nextId++,
       x: x + randomRange(-4, 4),
@@ -54,6 +55,7 @@ export class FoodManager {
       radius: 4.5,
       value: CONFIG.BOOST_DROP_VALUE,
       color,
+      colorIndex,
       glowColor: `#${color.toString(16).padStart(6, '0')}`,
       phase: Math.random() * Math.PI * 2,
       isBoostDrop: true,
@@ -64,26 +66,56 @@ export class FoodManager {
     return orb;
   }
 
-  public spawnCorpseFood(segments: { x: number; y: number }[], color: number): void {
-    // Pour chaque segment ou tous les 2 segments, faire jaillir de gros orbes brillants
-    const step = Math.max(1, Math.floor(segments.length / 40));
-    for (let i = 0; i < segments.length; i += step) {
-      const seg = segments[i];
-      const count = Math.floor(randomRange(1, 3));
-      for (let j = 0; j < count; j++) {
-        const value = Math.floor(randomRange(4, 10));
-        const orb: FoodOrb = {
-          id: this.nextId++,
-          x: seg.x + randomRange(-15, 15),
-          y: seg.y + randomRange(-15, 15),
-          radius: 6 + value * 1.2,
-          value,
-          color,
-          glowColor: `#${color.toString(16).padStart(6, '0')}`,
-          phase: Math.random() * Math.PI * 2,
-        };
-        this.orbs.push(orb);
-        this.grid.insert(orb);
+  private createOrbAt(x: number, y: number, value: number, color: number): FoodOrb {
+    const colorIndex = getColorIndex(color);
+    const orb: FoodOrb = {
+      id: this.nextId++,
+      x,
+      y,
+      radius: 5.5 + Math.min(value, 8) * 1.2,
+      value,
+      color,
+      colorIndex,
+      glowColor: `#${color.toString(16).padStart(6, '0')}`,
+      phase: Math.random() * Math.PI * 2,
+    };
+    this.orbs.push(orb);
+    this.grid.insert(orb);
+    return orb;
+  }
+
+  // Éjection garantie d'orbes massifs à la mort du serpent, même s'il vient de naître !
+  public spawnCorpseFood(headX: number, headY: number, segments: { x: number; y: number }[], color: number): void {
+    // 1. Explosion garantie de 10 à 15 orbes autour de la tête
+    const headCount = Math.floor(randomRange(10, 16));
+    for (let k = 0; k < headCount; k++) {
+      const angle = Math.random() * Math.PI * 2;
+      const dist = randomRange(6, 45);
+      const value = Math.floor(randomRange(4, 8));
+      this.createOrbAt(
+        headX + Math.cos(angle) * dist,
+        headY + Math.sin(angle) * dist,
+        value,
+        color
+      );
+    }
+
+    // 2. Orbes le long des anneaux du corps (avec un minimum de 12 orbes le long de la colonne)
+    const segCount = segments.length;
+    if (segCount > 0) {
+      const step = Math.max(1, Math.floor(segCount / 20));
+      for (let i = 0; i < segCount; i += step) {
+        const seg = segments[i];
+        const count = Math.floor(randomRange(1, 3));
+        for (let j = 0; j < count; j++) {
+          const value = Math.floor(randomRange(3, 7));
+          this.createOrbAt(
+            seg.x + randomRange(-16, 16),
+            seg.y + randomRange(-16, 16),
+            value,
+            color
+          );
+        }
       }
     }
   }
@@ -92,14 +124,12 @@ export class FoodManager {
     this.grid.remove(orb);
     const index = this.orbs.indexOf(orb);
     if (index !== -1) {
-      // Fast swap and pop pour éviter le décalage de tout le tableau
       const last = this.orbs.pop()!;
       if (index < this.orbs.length) {
         this.orbs[index] = last;
       }
     }
 
-    // Réapprovisionner les orbes de base pour garder la carte dense
     if (this.orbs.length < CONFIG.FOOD_COUNT) {
       this.spawnRandomOrb();
     }

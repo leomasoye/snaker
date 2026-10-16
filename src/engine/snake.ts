@@ -66,6 +66,8 @@ export class Snake {
         angle: this.angle,
       });
     }
+
+    this.updateAABB();
   }
 
   // Échelle équilibrée : la longueur croît de façon continue avec la racine carrée de la masse
@@ -193,6 +195,38 @@ export class Snake {
     if (this.x * this.x + this.y * this.y > CONFIG.WORLD_RADIUS * CONFIG.WORLD_RADIUS) {
       this.isAlive = false;
     }
+
+    // 5. Mettre à jour la Bounding Box pour le Broadphase des collisions
+    this.updateAABB();
+  }
+
+  // Bounding box Axis-Aligned pour éliminer 95% des tests de collisions à distance
+  public minX: number = 0;
+  public maxX: number = 0;
+  public minY: number = 0;
+  public maxY: number = 0;
+
+  public updateAABB(): void {
+    let minX = this.x;
+    let maxX = this.x;
+    let minY = this.y;
+    let maxY = this.y;
+
+    const segs = this.segments;
+    const len = segs.length;
+    for (let i = 0; i < len; i += 2) {
+      const s = segs[i];
+      if (s.x < minX) minX = s.x;
+      else if (s.x > maxX) maxX = s.x;
+      if (s.y < minY) minY = s.y;
+      else if (s.y > maxY) maxY = s.y;
+    }
+
+    const pad = this.radius + 30;
+    this.minX = minX - pad;
+    this.maxX = maxX + pad;
+    this.minY = minY - pad;
+    this.maxY = maxY + pad;
   }
 
   public eatFood(value: number): void {
@@ -205,12 +239,23 @@ export class Snake {
   public checkHeadCollisionWithBody(otherHeadX: number, otherHeadY: number, otherHeadRadius: number): boolean {
     if (!this.isAlive) return false;
 
-    // Ignorer les 4 premiers segments
+    // 1. Broadphase AABB ultra-rapide en O(1)
+    if (
+      otherHeadX < this.minX ||
+      otherHeadX > this.maxX ||
+      otherHeadY < this.minY ||
+      otherHeadY > this.maxY
+    ) {
+      return false;
+    }
+
+    // 2. Narrowphase : tester les segments par pas de 2
     const startIdx = 4;
     const threshold = this.radius * 0.8 + otherHeadRadius * 0.8;
     const thresholdSq = threshold * threshold;
+    const len = this.segments.length;
 
-    for (let i = startIdx; i < this.segments.length; i++) {
+    for (let i = startIdx; i < len; i += 2) {
       const seg = this.segments[i];
       if (distanceSq(otherHeadX, otherHeadY, seg.x, seg.y) < thresholdSq) {
         return true;

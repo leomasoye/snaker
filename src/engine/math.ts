@@ -58,3 +58,13 @@ export const VIBRANT_PALETTE = [
 export function getRandomVibrantColor(): number {
   return VIBRANT_PALETTE[Math.floor(Math.random() * VIBRANT_PALETTE.length)];
 }
+
+export function getRandomVibrantColorIndex(): { color: number; index: number } {
+  const index = Math.floor(Math.random() * VIBRANT_PALETTE.length);
+  return { color: VIBRANT_PALETTE[index], index };
+}
+
+export function getColorIndex(color: number): number {
+  const idx = VIBRANT_PALETTE.indexOf(color);
+  return idx !== -1 ? idx : 0;
+}

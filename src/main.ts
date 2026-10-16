@@ -45,7 +45,10 @@ class Game {
     this.minimap = new Minimap(minimapCanvas);
 
     this.hud = new HUD();
-    this.menu = new Menu((name, skin) => this.startGame(name, skin));
+    this.menu = new Menu(
+      (name, skin) => this.startGame(name, skin),
+      () => this.pauseToMenu()
+    );
 
     this.initInputListeners();
 
@@ -196,6 +199,11 @@ class Game {
     this.isGameActive = true;
   }
 
+  private pauseToMenu(): void {
+    this.isGameActive = false;
+    soundManager.setBoostSound(false);
+  }
+
   private handlePlayerDeath(): void {
     if (!this.player) return;
     this.isGameActive = false;
@@ -231,7 +239,7 @@ class Game {
     // Mode menu d'accueil : rendu d'ambiance ultra-léger pour préserver les ressources CPU/GPU
     if (!this.isGameActive || !this.player || !this.player.isAlive) {
       this.renderer.updateCamera(0, 0, CONFIG.INITIAL_MASS, dt);
-      this.renderer.renderFood(this.foodManager, time * 0.001);
+      this.renderer.renderFood(this.foodManager);
       this.minimap.render(null, []);
       return;
     }
@@ -255,7 +263,7 @@ class Game {
     // Si le joueur heurte la frontière de l'arène
     if (!this.player.isAlive) {
       this.particleSystem.emitDeathExplosion(this.player.x, this.player.y, this.player.skin.primaryColor);
-      this.foodManager.spawnCorpseFood(this.player.segments, this.player.skin.primaryColor);
+      this.foodManager.spawnCorpseFood(this.player.x, this.player.y, this.player.segments, this.player.skin.primaryColor);
       this.handlePlayerDeath();
       return;
     }
@@ -280,14 +288,13 @@ class Game {
         (x, y, angle, color) => this.particleSystem.emitBoostTrail(x, y, angle, color)
       );
 
-      // Si le bot meurt
+      // Si le bot meurt de lui-même (ex: bordure d'arène)
       if (!b.snake.isAlive) {
         this.particleSystem.emitDeathExplosion(b.snake.x, b.snake.y, b.snake.skin.primaryColor);
-        this.foodManager.spawnCorpseFood(b.snake.segments, b.snake.skin.primaryColor);
+        this.foodManager.spawnCorpseFood(b.snake.x, b.snake.y, b.snake.segments, b.snake.skin.primaryColor);
         this.bots.splice(i, 1);
         i--;
 
-        // Respawn dans une zone sécurisée après 2.5 secondes
         setTimeout(() => {
           if (this.isGameActive) this.spawnBot();
         }, 2500);
@@ -329,7 +336,16 @@ class Game {
           snakeB.kills++;
 
           this.particleSystem.emitDeathExplosion(snakeA.x, snakeA.y, snakeA.skin.primaryColor);
-          this.foodManager.spawnCorpseFood(snakeA.segments, snakeA.skin.primaryColor);
+          this.foodManager.spawnCorpseFood(snakeA.x, snakeA.y, snakeA.segments, snakeA.skin.primaryColor);
+
+          // Si c'est un bot, le retirer immédiatement de la liste active
+          const botIdx = this.bots.findIndex(b => b.snake === snakeA);
+          if (botIdx !== -1) {
+            this.bots.splice(botIdx, 1);
+            setTimeout(() => {
+              if (this.isGameActive) this.spawnBot();
+            }, 2500);
+          }
 
           if (snakeA === this.player) {
             this.handlePlayerDeath();
@@ -346,12 +362,14 @@ class Game {
 
     // 7. Rendu graphique optimisé
     this.renderer.updateCamera(this.player.x, this.player.y, this.player.mass, dt);
-    this.renderer.renderFood(this.foodManager, time * 0.001);
+    this.renderer.renderFood(this.foodManager);
     this.renderer.renderParticles(this.particleSystem);
     this.renderer.renderSnakes(this.allSnakes);
 
-    // 8. Rendu Minimap
-    this.minimap.render(this.player, this.allSnakes);
+    // 8. Rendu Minimap (actualisé toutes les 2 frames pour soulager le CPU)
+    if (Math.floor(time * 0.06) % 2 === 0) {
+      this.minimap.render(this.player, this.allSnakes);
+    }
 
     // 9. Mettre à jour le Leaderboard et les statistiques
     const rank = this.getPlayerRank();

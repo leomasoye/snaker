@@ -14,6 +14,10 @@ export class HUD {
   private lastFpsTime: number = performance.now();
   private currentFps: number = 60;
 
+  // Throttling du DOM pour éviter le reflow layout à 60 FPS
+  private lastStatsUpdate: number = 0;
+  private lastLeaderboardUpdate: number = 0;
+
   constructor() {
     this.leaderboardListEl = document.getElementById('leaderboard-list')!;
     this.scoreEl = document.getElementById('hud-score')!;
@@ -45,6 +49,11 @@ export class HUD {
   }
 
   public updateStats(score: number, length: number, rank: number, total: number, kills: number): void {
+    const now = performance.now();
+    // Actualiser le texte du DOM max 6 fois par seconde au lieu de 60
+    if (now - this.lastStatsUpdate < 150) return;
+    this.lastStatsUpdate = now;
+
     if (this.scoreEl) this.scoreEl.textContent = Math.floor(score).toLocaleString();
     if (this.lengthEl) this.lengthEl.textContent = length.toLocaleString();
     if (this.rankEl) this.rankEl.textContent = `#${rank} / ${total}`;
@@ -53,6 +62,10 @@ export class HUD {
 
   public updateLeaderboard(entries: LeaderboardEntry[]): void {
     if (!this.leaderboardListEl) return;
+    const now = performance.now();
+    // Actualiser le leaderboard HTML max 4 fois par seconde (élimine le DOM thrashing)
+    if (now - this.lastLeaderboardUpdate < 250) return;
+    this.lastLeaderboardUpdate = now;
 
     let html = '';
     const maxShow = Math.min(10, entries.length);

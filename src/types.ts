@@ -35,6 +35,7 @@ export interface FoodOrb {
   radius: number;
   value: number;
   color: number;
+  colorIndex: number;
   glowColor: string;
   phase: number;
   isBoostDrop?: boolean;
