@@ -5,6 +5,7 @@ import { getColorIndex, getRandomVibrantColorIndex, randomRange } from './math';
 
 export class FoodManager {
   private orbs: FoodOrb[] = [];
+  private idMap: Map<number, FoodOrb> = new Map();
   private grid: SpatialGrid<FoodOrb>;
   private nextId: number = 1;
 
@@ -42,6 +43,7 @@ export class FoodManager {
     };
 
     this.orbs.push(orb);
+    this.idMap.set(orb.id, orb);
     this.grid.insert(orb);
     return orb;
   }
@@ -62,17 +64,54 @@ export class FoodManager {
     };
 
     this.orbs.push(orb);
+    this.idMap.set(orb.id, orb);
     this.grid.insert(orb);
     return orb;
   }
 
-  private createOrbAt(x: number, y: number, value: number, color: number): FoodOrb {
+  public addServerOrb(f: {
+    id: number;
+    x: number;
+    y: number;
+    radius: number;
+    value: number;
+    color?: number;
+    colorIndex?: number;
+  }): FoodOrb {
+    const existing = this.idMap.get(f.id);
+    if (existing) {
+      return existing;
+    }
+
+    const orbColor = f.color || 0x00f0ff;
+    const orbColorIndex = f.colorIndex !== undefined ? f.colorIndex : getColorIndex(orbColor);
+
+    const orb: FoodOrb = {
+      id: f.id,
+      x: f.x,
+      y: f.y,
+      radius: f.radius,
+      value: f.value,
+      color: orbColor,
+      colorIndex: orbColorIndex,
+      glowColor: `#${orbColor.toString(16).padStart(6, '0')}`,
+      phase: Math.random() * Math.PI * 2,
+    };
+
+    this.orbs.push(orb);
+    this.idMap.set(orb.id, orb);
+    this.grid.insert(orb);
+    return orb;
+  }
+
+  public createOrbAt(x: number, y: number, value: number, color: number, customRadius?: number): FoodOrb {
     const colorIndex = getColorIndex(color);
+    const radius = customRadius !== undefined ? customRadius : Math.min(22, 5.5 + Math.sqrt(value) * 3.2);
     const orb: FoodOrb = {
       id: this.nextId++,
       x,
       y,
-      radius: 5.5 + Math.min(value, 8) * 1.2,
+      radius,
       value,
       color,
       colorIndex,
@@ -80,50 +119,75 @@ export class FoodManager {
       phase: Math.random() * Math.PI * 2,
     };
     this.orbs.push(orb);
+    this.idMap.set(orb.id, orb);
     this.grid.insert(orb);
     return orb;
   }
 
-  // Éjection garantie d'orbes massifs à la mort du serpent, même s'il vient de naître !
-  public spawnCorpseFood(headX: number, headY: number, segments: { x: number; y: number }[], color: number): FoodOrb[] {
+  // Éjection massive et généreuse d'orbes imposants à la mort du serpent
+  public spawnCorpseFood(
+    headX: number,
+    headY: number,
+    segments: { x: number; y: number }[],
+    color: number,
+    mass: number = 100
+  ): FoodOrb[] {
     const created: FoodOrb[] = [];
-    // 1. Explosion garantie de 10 à 15 orbes autour de la tête
-    const headCount = Math.floor(randomRange(10, 16));
+    const totalRewardMass = Math.max(90, Math.floor(mass * 0.72));
+
+    // 1. Explosion massive de 12 à 18 gros orbes autour de la tête
+    const headFoodQuota = Math.floor(totalRewardMass * 0.38);
+    const headCount = Math.floor(randomRange(12, 19));
+    const avgHeadVal = Math.max(5, Math.floor(headFoodQuota / headCount));
+
     for (let k = 0; k < headCount; k++) {
       const angle = Math.random() * Math.PI * 2;
-      const dist = randomRange(6, 45);
-      const value = Math.floor(randomRange(4, 8));
+      const dist = randomRange(8, 55);
+      const value = Math.max(4, Math.floor(randomRange(avgHeadVal * 0.7, avgHeadVal * 1.35)));
+      const orbRadius = Math.min(22, 5.5 + Math.sqrt(value) * 3.2);
+
       created.push(this.createOrbAt(
         headX + Math.cos(angle) * dist,
         headY + Math.sin(angle) * dist,
         value,
-        color
+        color,
+        orbRadius
       ));
     }
 
-    // 2. Orbes le long des anneaux du corps (avec un minimum de 12 orbes le long de la colonne)
+    // 2. Orbes denses et massifs le long des anneaux du corps
     const segCount = segments.length;
     if (segCount > 0) {
-      const step = Math.max(1, Math.floor(segCount / 20));
+      const bodyFoodQuota = totalRewardMass - headFoodQuota;
+      // Densité adaptée selon la longueur du serpent
+      const step = Math.max(1, Math.floor(segCount / 24));
+      const dropsAlongBody = Math.floor(segCount / step);
+      const avgBodyVal = Math.max(4, Math.floor(bodyFoodQuota / Math.max(1, dropsAlongBody * 1.5)));
+
       for (let i = 0; i < segCount; i += step) {
         const seg = segments[i];
         const count = Math.floor(randomRange(1, 3));
         for (let j = 0; j < count; j++) {
-          const value = Math.floor(randomRange(3, 7));
+          const value = Math.max(3, Math.floor(randomRange(avgBodyVal * 0.7, avgBodyVal * 1.4)));
+          const orbRadius = Math.min(20, 5.0 + Math.sqrt(value) * 3.0);
+
           created.push(this.createOrbAt(
-            seg.x + randomRange(-16, 16),
-            seg.y + randomRange(-16, 16),
+            seg.x + randomRange(-18, 18),
+            seg.y + randomRange(-18, 18),
             value,
-            color
+            color,
+            orbRadius
           ));
         }
       }
     }
+
     return created;
   }
 
   public removeOrb(orb: FoodOrb): FoodOrb | null {
     this.grid.remove(orb);
+    this.idMap.delete(orb.id);
     const index = this.orbs.indexOf(orb);
     if (index !== -1) {
       const last = this.orbs.pop()!;
@@ -138,8 +202,17 @@ export class FoodManager {
     return null;
   }
 
+  public removeOrbById(id: number): FoodOrb | null {
+    const orb = this.idMap.get(id);
+    if (orb) {
+      return this.removeOrb(orb);
+    }
+    return null;
+  }
+
   public clearAll(): void {
     this.orbs = [];
+    this.idMap.clear();
     this.grid = new SpatialGrid<FoodOrb>(CONFIG.FOOD_CELL_SIZE);
   }
 
@@ -148,6 +221,7 @@ export class FoodManager {
     for (let i = 0; i < newOrbs.length; i++) {
       const o = newOrbs[i];
       this.orbs.push(o);
+      this.idMap.set(o.id, o);
       this.grid.insert(o);
     }
   }

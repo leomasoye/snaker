@@ -31,6 +31,7 @@ class Game {
   private isGameActive: boolean = false;
   private isMultiplayer: boolean = false;
   private localPlayerId: string = 'player';
+  private currentLeaderSnakeId: string = '';
 
   private lastTime: number = performance.now();
   private mouseScreenX: number = 0;
@@ -176,22 +177,21 @@ class Game {
       }, 500);
     };
 
+    this.networkClient.onKill = (payload) => {
+      soundManager.playKill();
+      this.hud.showKillNotification(payload.victimName, payload.victimMass);
+    };
+
     this.networkClient.connect();
   }
 
   private handleServerTick(payload: NetTickPayload): void {
-    // 1. Mettre à jour les orbes ajoutés et supprimés par le serveur (Delta synchro)
+    // 1. Mettre à jour les orbes ajoutés et supprimés par le serveur (Delta synchro avec taille et valeur réelles)
     for (let i = 0; i < payload.addedFood.length; i++) {
-      const f = payload.addedFood[i];
-      const existing = this.foodManager.getAllOrbs().find(o => o.id === f.id);
-      if (!existing) {
-        this.foodManager.spawnBoostDrop(f.x, f.y, f.color || 0x00f0ff);
-      }
+      this.foodManager.addServerOrb(payload.addedFood[i]);
     }
     for (let i = 0; i < payload.removedFoodIds.length; i++) {
-      const id = payload.removedFoodIds[i];
-      const orb = this.foodManager.getAllOrbs().find(o => o.id === id);
-      if (orb) this.foodManager.removeOrb(orb);
+      this.foodManager.removeOrbById(payload.removedFoodIds[i]);
     }
 
     // 2. Synchroniser les serpents
@@ -273,8 +273,24 @@ class Game {
       }
     }
 
-    // 3. Mettre à jour le classement en direct
+    // 3. Mettre à jour le classement en direct et identifier le leader
     this.hud.updateLeaderboard(payload.leaderboard);
+    if (payload.leaderboard.length > 0) {
+      const top = payload.leaderboard[0];
+      if (top.isPlayer) {
+        this.currentLeaderSnakeId = this.localPlayerId;
+      } else {
+        let found = false;
+        for (const remote of this.remoteSnakes.values()) {
+          if (remote.name === top.name) {
+            this.currentLeaderSnakeId = remote.id;
+            found = true;
+            break;
+          }
+        }
+        if (!found) this.currentLeaderSnakeId = '';
+      }
+    }
   }
 
   private initBots(): void {
@@ -511,7 +527,7 @@ class Game {
     // Si le joueur sort de l'arène
     if (!this.player.isAlive) {
       this.particleSystem.emitDeathExplosion(this.player.x, this.player.y, this.player.skin.primaryColor);
-      this.foodManager.spawnCorpseFood(this.player.x, this.player.y, this.player.segments, this.player.skin.primaryColor);
+      this.foodManager.spawnCorpseFood(this.player.x, this.player.y, this.player.segments, this.player.skin.primaryColor, this.player.mass);
       this.handlePlayerDeath();
       return;
     }
@@ -572,7 +588,7 @@ class Game {
 
         if (!b.snake.isAlive) {
           this.particleSystem.emitDeathExplosion(b.snake.x, b.snake.y, b.snake.skin.primaryColor);
-          this.foodManager.spawnCorpseFood(b.snake.x, b.snake.y, b.snake.segments, b.snake.skin.primaryColor);
+          this.foodManager.spawnCorpseFood(b.snake.x, b.snake.y, b.snake.segments, b.snake.skin.primaryColor, b.snake.mass);
           this.bots.splice(i, 1);
           i--;
           setTimeout(() => {
@@ -596,7 +612,7 @@ class Game {
             snakeB.kills++;
 
             this.particleSystem.emitDeathExplosion(snakeA.x, snakeA.y, snakeA.skin.primaryColor);
-            this.foodManager.spawnCorpseFood(snakeA.x, snakeA.y, snakeA.segments, snakeA.skin.primaryColor);
+            this.foodManager.spawnCorpseFood(snakeA.x, snakeA.y, snakeA.segments, snakeA.skin.primaryColor, snakeA.mass);
 
             const botIdx = this.bots.findIndex(b => b.snake === snakeA);
             if (botIdx !== -1) {
@@ -610,6 +626,7 @@ class Game {
               this.handlePlayerDeath();
             } else if (snakeB === this.player) {
               soundManager.playKill();
+              this.hud.showKillNotification(snakeA.name, Math.floor(snakeA.mass * 0.5));
             }
             break;
           }
@@ -617,26 +634,47 @@ class Game {
       }
     }
 
-    // 3. Détection de l'absorption d'orbes pour le joueur local
-    const eatRadius = this.player.radius + 10;
-    const nearbyOrbs = this.foodManager.getOrbsInRadius(this.player.x, this.player.y, eatRadius);
+    // 3. Détection de l'absorption d'orbes pour tous les serpents (joueur + bots)
+    for (let s = 0; s < this.allSnakes.length; s++) {
+      const snake = this.allSnakes[s];
+      if (!snake.isAlive) continue;
 
-    for (let j = 0; j < nearbyOrbs.length; j++) {
-      const orb = nearbyOrbs[j];
-      this.player.eatFood(orb.value);
-      this.foodManager.removeOrb(orb);
-      soundManager.playEat(orb.value);
-      this.particleSystem.emitEatEffect(orb.x, orb.y, orb.color);
+      const eatRadius = snake.radius + 12;
+      const nearbyOrbs = this.foodManager.getOrbsInRadius(snake.x, snake.y, eatRadius);
+
+      for (let j = 0; j < nearbyOrbs.length; j++) {
+        const orb = nearbyOrbs[j];
+        snake.eatFood(orb.value);
+        this.foodManager.removeOrb(orb);
+        if (snake === this.player) {
+          soundManager.playEat(orb.value);
+          this.particleSystem.emitEatEffect(orb.x, orb.y, orb.color);
+        }
+      }
     }
 
     // 4. Mettre à jour les particules
     this.particleSystem.update(dt);
 
-    // 5. Rendu graphique optimisé
+    // 5. Rendu graphique optimisé avec couronne sur le leader (#1)
+    let leaderSnakeId = '';
+    if (this.isMultiplayer) {
+      leaderSnakeId = this.currentLeaderSnakeId;
+    } else {
+      let maxScore = -1;
+      for (let s = 0; s < this.allSnakes.length; s++) {
+        const snake = this.allSnakes[s];
+        if (snake.isAlive && snake.mass > maxScore) {
+          maxScore = snake.mass;
+          leaderSnakeId = snake.id;
+        }
+      }
+    }
+
     this.renderer.updateCamera(this.player.x, this.player.y, this.player.mass, dt);
     this.renderer.renderFood(this.foodManager);
     this.renderer.renderParticles(this.particleSystem);
-    this.renderer.renderSnakes(this.allSnakes);
+    this.renderer.renderSnakes(this.allSnakes, leaderSnakeId);
 
     // 6. Rendu Minimap
     if (Math.floor(time * 0.06) % 2 === 0) {

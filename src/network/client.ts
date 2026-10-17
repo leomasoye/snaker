@@ -1,8 +1,9 @@
-import { BinaryProtocol, OPCODES, type NetDeathPayload, type NetTickPayload, type NetWelcomePayload } from '../shared/protocol';
+import { BinaryProtocol, OPCODES, type NetDeathPayload, type NetKillPayload, type NetTickPayload, type NetWelcomePayload } from '../shared/protocol';
 
 export type OnWelcomeCallback = (payload: NetWelcomePayload) => void;
 export type OnTickCallback = (payload: NetTickPayload) => void;
 export type OnDeathCallback = (payload: NetDeathPayload) => void;
+export type OnKillCallback = (payload: NetKillPayload) => void;
 export type OnPingCallback = (pingMs: number) => void;
 
 export class NetworkClient {
@@ -19,6 +20,7 @@ export class NetworkClient {
   public onWelcome?: OnWelcomeCallback;
   public onTick?: OnTickCallback;
   public onDeath?: OnDeathCallback;
+  public onKill?: OnKillCallback;
   public onPing?: OnPingCallback;
   public onStatusChange?: (online: boolean) => void;
 
@@ -149,6 +151,12 @@ export class NetworkClient {
     else if (opcode === OPCODES.S2C_DEATH) {
       const { payload } = BinaryProtocol.decodeJsonPacket<NetDeathPayload>(buffer);
       if (this.onDeath) this.onDeath(payload);
+    }
+
+    // S2C_KILL_FEED
+    else if (opcode === OPCODES.S2C_KILL_FEED) {
+      const { payload } = BinaryProtocol.decodeJsonPacket<NetKillPayload>(buffer);
+      if (this.onKill) this.onKill(payload);
     }
   }
 

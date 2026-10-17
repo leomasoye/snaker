@@ -74,6 +74,13 @@ export interface NetDeathPayload {
   finalRank: number;
 }
 
+export interface NetKillPayload {
+  killerId: string;
+  killerName: string;
+  victimName: string;
+  victimMass: number;
+}
+
 // Sérialiseur et Désérialiseur Binaire Compact
 export class BinaryProtocol {
   private static textEncoder = new TextEncoder();

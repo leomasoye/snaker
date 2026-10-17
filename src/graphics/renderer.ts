@@ -162,7 +162,7 @@ export class GameRenderer {
     }
   }
 
-  public renderSnakes(snakes: Snake[]): void {
+  public renderSnakes(snakes: Snake[], leaderSnakeId?: string): void {
     const g = this.snakesGraphics;
     g.clear();
 
@@ -177,7 +177,6 @@ export class GameRenderer {
     const maxX = this.cameraX + halfW;
     const minY = this.cameraY - halfH;
     const maxY = this.cameraY + halfH;
-
 
     for (let s = 0; s < snakes.length; s++) {
       const snake = snakes[s];
@@ -237,6 +236,8 @@ export class GameRenderer {
 
       // 4. Dessiner la tête (si visible)
       if (snake.x >= minX && snake.x <= maxX && snake.y >= minY && snake.y <= maxY) {
+        const isLeader = snake.id === leaderSnakeId;
+
         // Tête pleine
         g.circle(snake.x, snake.y, radius * 1.1).fill({ color: snake.skin.primaryColor, alpha: 1.0 });
 
@@ -278,16 +279,63 @@ export class GameRenderer {
         g.circle(rightPupilX - catchDist, rightPupilY - catchDist, pupilRadius * 0.35);
         g.fill({ color: 0xffffff });
 
-        // 5. Étiquette de nom
+        let crownCenterY = snake.y - radius - 14;
+
+        // 5. Couronne Royale sur la tête du Premier Joueur (#1)
+        if (isLeader) {
+          const crownBob = Math.sin(performance.now() * 0.005) * 3;
+          crownCenterY += crownBob;
+          const crownCenterX = snake.x;
+          const crownWidth = Math.max(26, radius * 1.35);
+          const crownHeight = Math.max(16, radius * 0.85);
+          const cHalfW = crownWidth / 2;
+          const cHalfH = crownHeight / 2;
+
+          // Halo doré lumineux
+          g.circle(crownCenterX, crownCenterY, crownWidth * 0.75).fill({ color: 0xffd700, alpha: 0.22 });
+
+          // Silhouette royale de la couronne dorée (3 pointes majestueuses)
+          g.poly([
+            crownCenterX - cHalfW, crownCenterY + cHalfH,
+            crownCenterX - cHalfW * 0.95, crownCenterY - cHalfH * 0.6,
+            crownCenterX - cHalfW * 0.42, crownCenterY + cHalfH * 0.1,
+            crownCenterX, crownCenterY - cHalfH * 1.15,
+            crownCenterX + cHalfW * 0.42, crownCenterY + cHalfH * 0.1,
+            crownCenterX + cHalfW * 0.95, crownCenterY - cHalfH * 0.6,
+            crownCenterX + cHalfW, crownCenterY + cHalfH,
+          ]);
+          g.fill({ color: 0xffcc00, alpha: 1.0 });
+          g.stroke({ width: 2, color: 0xfff077 });
+
+          // Bandeau inférieur doré orné
+          g.roundRect(crownCenterX - cHalfW * 0.88, crownCenterY + cHalfH * 0.35, cHalfW * 1.76, cHalfH * 0.65, 3)
+           .fill({ color: 0xdf9800 });
+
+          // Joyaux précieux sur les sommets
+          // Pointe centrale (Diamant cyan étincelant)
+          g.circle(crownCenterX, crownCenterY - cHalfH * 1.15, 3.2).fill({ color: 0x00f0ff });
+          g.circle(crownCenterX, crownCenterY - cHalfH * 1.15, 1.2).fill({ color: 0xffffff });
+
+          // Pointes latérales (Rubis carmin)
+          g.circle(crownCenterX - cHalfW * 0.95, crownCenterY - cHalfH * 0.6, 2.4).fill({ color: 0xff0055 });
+          g.circle(crownCenterX + cHalfW * 0.95, crownCenterY - cHalfH * 0.6, 2.4).fill({ color: 0xff0055 });
+
+          // Joyaux incrustés sur le bandeau
+          g.circle(crownCenterX - cHalfW * 0.45, crownCenterY + cHalfH * 0.68, 1.6).fill({ color: 0x00ffcc });
+          g.circle(crownCenterX, crownCenterY + cHalfH * 0.68, 1.8).fill({ color: 0xff0055 });
+          g.circle(crownCenterX + cHalfW * 0.45, crownCenterY + cHalfH * 0.68, 1.6).fill({ color: 0x00ffcc });
+        }
+
+        // 6. Étiquette de nom
         let label = this.nameLabels.get(snake.id);
         if (!label) {
           label = new Text({
-            text: snake.name,
+            text: (isLeader ? '👑 ' : '') + snake.name,
             style: {
               fontFamily: 'Outfit, Inter, sans-serif',
               fontSize: 13,
-              fontWeight: '600',
-              fill: '#ffffff',
+              fontWeight: '700',
+              fill: isLeader ? '#ffd700' : '#ffffff',
               stroke: { color: '#000000', width: 3 },
               align: 'center',
             },
@@ -295,8 +343,16 @@ export class GameRenderer {
           label.anchor.set(0.5, 1);
           this.nameContainer.addChild(label);
           this.nameLabels.set(snake.id, label);
+        } else {
+          label.text = (isLeader ? '👑 ' : '') + snake.name;
+          label.style.fill = isLeader ? '#ffd700' : '#ffffff';
         }
-        label.position.set(snake.x, snake.y - radius - 8);
+
+        if (isLeader) {
+          label.position.set(snake.x, crownCenterY - (radius * 0.85) / 2 - 8);
+        } else {
+          label.position.set(snake.x, snake.y - radius - 8);
+        }
         label.visible = true;
       }
     }

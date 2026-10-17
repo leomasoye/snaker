@@ -87,6 +87,31 @@ export class HUD {
     this.leaderboardListEl.innerHTML = html;
   }
 
+  public showKillNotification(victimName: string, points?: number): void {
+    const container = document.getElementById('kill-feed-container');
+    if (!container) return;
+
+    const toast = document.createElement('div');
+    toast.className = 'kill-toast';
+    toast.innerHTML = `
+      <span class="kill-toast-icon">⚔️</span>
+      <div class="kill-toast-body">
+        <span class="kill-toast-action">Tu as éliminé</span>
+        <span class="kill-toast-victim">${this.escapeHtml(victimName)}</span>
+      </div>
+      ${points && points > 0 ? `<span class="kill-toast-bonus">+${points} pts</span>` : ''}
+    `;
+
+    container.appendChild(toast);
+
+    // Supprimer l'élément à la fin de l'animation
+    setTimeout(() => {
+      if (toast.parentNode) {
+        toast.parentNode.removeChild(toast);
+      }
+    }, 2800);
+  }
+
   private escapeHtml(str: string): string {
     return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
   }

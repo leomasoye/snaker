@@ -149,7 +149,8 @@ export class GameRoom {
           player.snake.x,
           player.snake.y,
           player.snake.segments,
-          player.snake.skin.primaryColor
+          player.snake.skin.primaryColor,
+          player.snake.mass
         );
         for (let k = 0; k < corpseOrbs.length; k++) {
           const orb = corpseOrbs[k];
@@ -302,6 +303,18 @@ export class GameRoom {
 
           this.handleSnakeDeath(snakeA, snakeB.name);
 
+          // Si le tueur est un joueur humain connecté, lui envoyer la notification de kill
+          const killerPlayer = this.players.get(snakeB.id);
+          if (killerPlayer && killerPlayer.ws.readyState === WebSocket.OPEN) {
+            const killPacket = BinaryProtocol.encodeJsonPacket(OPCODES.S2C_KILL_FEED, {
+              killerId: snakeB.id,
+              killerName: snakeB.name,
+              victimName: snakeA.name,
+              victimMass: Math.floor(snakeA.mass * 0.5),
+            });
+            killerPlayer.ws.send(killPacket);
+          }
+
           // Si c'est un bot éliminé, le retirer
           const botIdx = this.bots.findIndex(b => b.snake === snakeA);
           if (botIdx !== -1) {
@@ -323,7 +336,8 @@ export class GameRoom {
       deadSnake.x,
       deadSnake.y,
       deadSnake.segments,
-      deadSnake.skin.primaryColor
+      deadSnake.skin.primaryColor,
+      deadSnake.mass
     );
     for (let k = 0; k < corpseOrbs.length; k++) {
       const orb = corpseOrbs[k];
