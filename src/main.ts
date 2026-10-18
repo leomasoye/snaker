@@ -191,7 +191,16 @@ class Game {
       this.foodManager.addServerOrb(payload.addedFood[i]);
     }
     for (let i = 0; i < payload.removedFoodIds.length; i++) {
-      this.foodManager.removeOrbById(payload.removedFoodIds[i]);
+      const orbId = payload.removedFoodIds[i];
+      const orb = this.foodManager.getOrbById(orbId);
+      if (orb && this.player) {
+        const dx = orb.x - this.player.x;
+        const dy = orb.y - this.player.y;
+        if (dx * dx + dy * dy < (this.player.radius + 28) ** 2) {
+          this.particleSystem.emitEatEffect(orb.x, orb.y, orb.color);
+        }
+      }
+      this.foodManager.removeOrbById(orbId);
     }
 
     // 2. Synchroniser les serpents
@@ -487,7 +496,7 @@ class Game {
     return idx === -1 ? sorted.length : idx + 1;
   }
 
-  private gameLoop(time: number): void {
+  private gameLoop(_time: number): void {
     requestAnimationFrame((t) => this.gameLoop(t));
 
     const now = performance.now();
@@ -499,7 +508,7 @@ class Game {
     if (!this.isGameActive || !this.player || !this.player.isAlive) {
       this.renderer.updateCamera(0, 0, CONFIG.INITIAL_MASS, dt);
       this.renderer.renderFood(this.foodManager);
-      this.minimap.render(null, []);
+      this.minimap.render(null, [], '', dt);
       return;
     }
 
@@ -513,23 +522,34 @@ class Game {
     }
     this.updatePlayerBoost();
 
-    // Envoi des inputs à haute fréquence via le protocole binaire (4 octets)
+    // Envoi des inputs à haute fréquence avec position prédite pour synchronisation anti-latence
     if (this.isMultiplayer) {
-      this.networkClient.sendInput(this.player.targetAngle, this.player.isBoosting);
+      this.networkClient.sendInput(this.player.targetAngle, this.player.isBoosting, this.player.x, this.player.y);
     }
 
     this.player.update(
       dt,
-      (x, y, color) => this.foodManager.spawnBoostDrop(x, y, color),
+      this.isMultiplayer ? undefined : (x, y, color) => this.foodManager.spawnBoostDrop(x, y, color),
       (x, y, angle, color) => this.particleSystem.emitBoostTrail(x, y, angle, color)
     );
 
-    // Si le joueur sort de l'arène
+    // Vérification de la bordure d'arène
     if (!this.player.isAlive) {
-      this.particleSystem.emitDeathExplosion(this.player.x, this.player.y, this.player.skin.primaryColor);
-      this.foodManager.spawnCorpseFood(this.player.x, this.player.y, this.player.segments, this.player.skin.primaryColor, this.player.mass);
-      this.handlePlayerDeath();
-      return;
+      if (this.isMultiplayer) {
+        // En multijoueur, le serveur est l'autorité absolue sur la mort (via S2C_DEATH).
+        // On maintient le joueur à la bordure en attendant la confirmation du serveur.
+        this.player.isAlive = true;
+        const r = Math.hypot(this.player.x, this.player.y);
+        if (r > CONFIG.WORLD_RADIUS) {
+          this.player.x = (this.player.x / r) * (CONFIG.WORLD_RADIUS - 2);
+          this.player.y = (this.player.y / r) * (CONFIG.WORLD_RADIUS - 2);
+        }
+      } else {
+        this.particleSystem.emitDeathExplosion(this.player.x, this.player.y, this.player.skin.primaryColor);
+        this.foodManager.spawnCorpseFood(this.player.x, this.player.y, this.player.segments, this.player.skin.primaryColor, this.player.mass);
+        this.handlePlayerDeath();
+        return;
+      }
     }
 
     // 2. Rassembler la liste des serpents actifs (joueur + distants ou bots locaux)
@@ -564,6 +584,11 @@ class Game {
           leaderY = seg.y;
         }
         remote.updateAABB();
+
+        if (remote.isBoosting && remote.segments.length > 0) {
+          const tail = remote.segments[remote.segments.length - 1];
+          this.particleSystem.emitBoostTrail(tail.x, tail.y, tail.angle, remote.skin.primaryColor);
+        }
 
         this.allSnakes.push(remote);
       }
@@ -634,21 +659,23 @@ class Game {
       }
     }
 
-    // 3. Détection de l'absorption d'orbes pour tous les serpents (joueur + bots)
-    for (let s = 0; s < this.allSnakes.length; s++) {
-      const snake = this.allSnakes[s];
-      if (!snake.isAlive) continue;
+    // 3. Détection de l'absorption d'orbes (en solo uniquement, géré par le serveur en multijoueur)
+    if (!this.isMultiplayer) {
+      for (let s = 0; s < this.allSnakes.length; s++) {
+        const snake = this.allSnakes[s];
+        if (!snake.isAlive) continue;
 
-      const eatRadius = snake.radius + 12;
-      const nearbyOrbs = this.foodManager.getOrbsInRadius(snake.x, snake.y, eatRadius);
+        const eatRadius = snake.radius + 12;
+        const nearbyOrbs = this.foodManager.getOrbsInRadius(snake.x, snake.y, eatRadius);
 
-      for (let j = 0; j < nearbyOrbs.length; j++) {
-        const orb = nearbyOrbs[j];
-        snake.eatFood(orb.value);
-        this.foodManager.removeOrb(orb);
-        if (snake === this.player) {
-          soundManager.playEat(orb.value);
-          this.particleSystem.emitEatEffect(orb.x, orb.y, orb.color);
+        for (let j = 0; j < nearbyOrbs.length; j++) {
+          const orb = nearbyOrbs[j];
+          snake.eatFood(orb.value);
+          this.foodManager.removeOrb(orb);
+          if (snake === this.player) {
+            soundManager.playEat(orb.value);
+            this.particleSystem.emitEatEffect(orb.x, orb.y, orb.color);
+          }
         }
       }
     }
@@ -676,10 +703,16 @@ class Game {
     this.renderer.renderParticles(this.particleSystem);
     this.renderer.renderSnakes(this.allSnakes, leaderSnakeId);
 
-    // 6. Rendu Minimap
-    if (Math.floor(time * 0.06) % 2 === 0) {
-      this.minimap.render(this.player, this.allSnakes);
-    }
+    // 6. Rendu Minimap Tactique 60 FPS
+    this.minimap.render(
+      this.player,
+      this.allSnakes,
+      leaderSnakeId,
+      dt,
+      this.renderer.cameraZoom,
+      window.innerWidth,
+      window.innerHeight
+    );
 
     // 7. Mettre à jour les statistiques joueur dans le HUD
     const rank = this.getPlayerRank();

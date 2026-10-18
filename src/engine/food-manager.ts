@@ -1,7 +1,7 @@
 import type { FoodOrb } from '../types';
 import { CONFIG } from '../config';
 import { SpatialGrid } from './spatial-grid';
-import { getColorIndex, getRandomVibrantColorIndex, randomRange } from './math';
+import { getColorIndex, getRandomVibrantColorIndex, randomRange, VIBRANT_PALETTE } from './math';
 
 export class FoodManager {
   private orbs: FoodOrb[] = [];
@@ -69,6 +69,10 @@ export class FoodManager {
     return orb;
   }
 
+  public getOrbById(id: number): FoodOrb | undefined {
+    return this.idMap.get(id);
+  }
+
   public addServerOrb(f: {
     id: number;
     x: number;
@@ -83,7 +87,9 @@ export class FoodManager {
       return existing;
     }
 
-    const orbColor = f.color || 0x00f0ff;
+    const orbColor = f.color !== undefined
+      ? f.color
+      : (f.colorIndex !== undefined ? (VIBRANT_PALETTE[f.colorIndex] || 0x00f0ff) : 0x00f0ff);
     const orbColorIndex = f.colorIndex !== undefined ? f.colorIndex : getColorIndex(orbColor);
 
     const orb: FoodOrb = {

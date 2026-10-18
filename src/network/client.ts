@@ -107,7 +107,7 @@ export class NetworkClient {
     this.ws.send(packet);
   }
 
-  public sendInput(angle: number, isBoosting: boolean): void {
+  public sendInput(angle: number, isBoosting: boolean, posX?: number, posY?: number): void {
     if (!this.isConnected || !this.ws || this.ws.readyState !== WebSocket.OPEN) return;
 
     const now = performance.now();
@@ -119,7 +119,7 @@ export class NetworkClient {
     this.lastInputBoost = isBoosting;
     this.lastInputSentTime = now;
 
-    const packet = BinaryProtocol.encodeInput(angle, isBoosting);
+    const packet = BinaryProtocol.encodeInput(angle, isBoosting, posX, posY);
     this.ws.send(packet);
   }
 

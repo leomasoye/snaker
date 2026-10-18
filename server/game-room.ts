@@ -105,6 +105,7 @@ export class GameRoom {
   private spawnBot(): void {
     const pos = this.findSafeSpawnLocation(600);
     const bot = new BotController(`bot_${this.nextBotId++}`, pos.x, pos.y);
+    bot.snake.invulnerableTimer = 1.5;
     this.bots.push(bot);
   }
 
@@ -127,6 +128,7 @@ export class GameRoom {
     const safePos = this.findSafeSpawnLocation(700);
     const skin = SKINS[skinIndex % SKINS.length] || SKINS[0];
     const snake = new Snake(id, name, safePos.x, safePos.y, skin, false, CONFIG.INITIAL_MASS);
+    snake.invulnerableTimer = 2.5; // Bouclier protecteur de 2.5 secondes
 
     this.players.set(id, {
       id,
@@ -170,11 +172,32 @@ export class GameRoom {
     }
   }
 
-  public handlePlayerInput(id: string, angle: number, isBoosting: boolean): void {
+  public handlePlayerInput(
+    id: string,
+    angle: number,
+    isBoosting: boolean,
+    clientX?: number,
+    clientY?: number
+  ): void {
     const player = this.players.get(id);
     if (player && player.snake.isAlive) {
       player.snake.targetAngle = angle;
       player.snake.isBoosting = isBoosting;
+
+      // Synchronisation de position tolérante au ping (élimine les morts fantômes par dérive de latence)
+      if (clientX !== undefined && clientY !== undefined) {
+        const dx = clientX - player.snake.x;
+        const dy = clientY - player.snake.y;
+        const distSq = dx * dx + dy * dy;
+        const speed = player.snake.isBoosting ? CONFIG.BOOST_SPEED : CONFIG.BASE_SPEED;
+        // Tolérance : distance parcourue en ~160ms + marge réseau
+        const maxDist = speed * 0.22 + 50;
+        if (distSq < maxDist * maxDist) {
+          player.snake.x = clientX;
+          player.snake.y = clientY;
+        }
+      }
+
       player.lastInputTime = Date.now();
     }
   }
@@ -287,7 +310,7 @@ export class GameRoom {
       }
     }
 
-    // 4. Détection des collisions mortelles (Tête contre Corps adverse)
+    // 4. Détection des collisions mortelles équitables
     for (let i = 0; i < allSnakes.length; i++) {
       const snakeA = allSnakes[i];
       if (!snakeA.isAlive) continue;
@@ -297,30 +320,52 @@ export class GameRoom {
         const snakeB = allSnakes[j];
         if (!snakeB.isAlive) continue;
 
+        // Protection de spawn (bouclier actif) : impossible de tuer ou mourir
+        if (snakeA.invulnerableTimer > 0 || snakeB.invulnerableTimer > 0) continue;
+
+        // A. Collision frontale (Tête contre Tête)
+        const dxHead = snakeA.x - snakeB.x;
+        const dyHead = snakeA.y - snakeB.y;
+        const headDistSq = dxHead * dxHead + dyHead * dyHead;
+        const headHitDist = (snakeA.radius + snakeB.radius) * 0.85;
+
+        if (headDistSq < headHitDist * headHitDist) {
+          let victim: Snake;
+          let killer: Snake;
+
+          if (snakeA.mass > snakeB.mass * 1.15) {
+            victim = snakeB;
+            killer = snakeA;
+          } else if (snakeB.mass > snakeA.mass * 1.15) {
+            victim = snakeA;
+            killer = snakeB;
+          } else {
+            // En cas de masse équivalente, le serpent ayant la plus petite masse cède
+            if (snakeA.mass < snakeB.mass) {
+              victim = snakeA;
+              killer = snakeB;
+            } else {
+              victim = snakeB;
+              killer = snakeA;
+            }
+          }
+
+          victim.isAlive = false;
+          killer.kills++;
+          this.handleSnakeDeath(victim, killer.name);
+          this.notifyKiller(killer, victim);
+          this.handleBotRespawn(victim);
+          break;
+        }
+
+        // B. Collision Tête contre Corps
         if (snakeB.checkHeadCollisionWithBody(snakeA.x, snakeA.y, snakeA.radius)) {
           snakeA.isAlive = false;
           snakeB.kills++;
 
           this.handleSnakeDeath(snakeA, snakeB.name);
-
-          // Si le tueur est un joueur humain connecté, lui envoyer la notification de kill
-          const killerPlayer = this.players.get(snakeB.id);
-          if (killerPlayer && killerPlayer.ws.readyState === WebSocket.OPEN) {
-            const killPacket = BinaryProtocol.encodeJsonPacket(OPCODES.S2C_KILL_FEED, {
-              killerId: snakeB.id,
-              killerName: snakeB.name,
-              victimName: snakeA.name,
-              victimMass: Math.floor(snakeA.mass * 0.5),
-            });
-            killerPlayer.ws.send(killPacket);
-          }
-
-          // Si c'est un bot éliminé, le retirer
-          const botIdx = this.bots.findIndex(b => b.snake === snakeA);
-          if (botIdx !== -1) {
-            this.bots.splice(botIdx, 1);
-            setTimeout(() => this.spawnBot(), 2500);
-          }
+          this.notifyKiller(snakeB, snakeA);
+          this.handleBotRespawn(snakeA);
           break;
         }
       }
@@ -328,6 +373,27 @@ export class GameRoom {
 
     // 5. Diffusion du Snapshot Binaire à tous les clients
     this.broadcastTick();
+  }
+
+  private notifyKiller(killer: Snake, victim: Snake): void {
+    const killerPlayer = this.players.get(killer.id);
+    if (killerPlayer && killerPlayer.ws.readyState === WebSocket.OPEN) {
+      const killPacket = BinaryProtocol.encodeJsonPacket(OPCODES.S2C_KILL_FEED, {
+        killerId: killer.id,
+        killerName: killer.name,
+        victimName: victim.name,
+        victimMass: Math.floor(victim.mass * 0.5),
+      });
+      killerPlayer.ws.send(killPacket);
+    }
+  }
+
+  private handleBotRespawn(deadSnake: Snake): void {
+    const botIdx = this.bots.findIndex(b => b.snake === deadSnake);
+    if (botIdx !== -1) {
+      this.bots.splice(botIdx, 1);
+      setTimeout(() => this.spawnBot(), 2500);
+    }
   }
 
   private handleSnakeDeath(deadSnake: Snake, killerName: string): void {

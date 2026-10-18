@@ -3,7 +3,6 @@ import { CONFIG } from '../config';
 import { Snake } from '../engine/snake';
 import { FoodManager } from '../engine/food-manager';
 import { ParticleSystem } from '../engine/particle-system';
-import { VIBRANT_PALETTE } from '../engine/math';
 import { clamp } from '../engine/math';
 import type { FoodOrb } from '../types';
 
@@ -19,8 +18,8 @@ export class GameRenderer {
   private nameLabels: Map<string, Text> = new Map();
   private nameContainer: Container;
 
-  // Pré-allocation des bacs de couleurs d'orbes pour un coût mémoire 0
-  private foodBuckets: FoodOrb[][] = Array.from({ length: VIBRANT_PALETTE.length }, () => []);
+  // Pré-allocation et réutilisation des bacs de couleurs exactes d'orbes
+  private foodColorBuckets: Map<number, FoodOrb[]> = new Map();
 
   // Caméra
   public cameraX: number = 0;
@@ -127,18 +126,19 @@ export class GameRenderer {
     const totalVisible = visibleOrbs.length;
     if (totalVisible === 0) return;
 
-    // 1. Distribution en une passe unique dans les 8 bacs de couleurs (Zéro allocation)
+    // 1. Distribution par couleur réelle (regroupement pour batch GPU, zéro allocation)
     for (let i = 0; i < totalVisible; i++) {
       const orb = visibleOrbs[i];
-      const idx = orb.colorIndex;
-      if (idx >= 0 && idx < 8) {
-        this.foodBuckets[idx].push(orb);
+      let bucket = this.foodColorBuckets.get(orb.color);
+      if (!bucket) {
+        bucket = [];
+        this.foodColorBuckets.set(orb.color, bucket);
       }
+      bucket.push(orb);
     }
 
-    // 2. Dessiner chaque couleur en un seul appel GPU batché
-    for (let c = 0; c < 8; c++) {
-      const bucket = this.foodBuckets[c];
+    // 2. Dessiner chaque couleur réelle en un seul appel GPU batché
+    for (const [color, bucket] of this.foodColorBuckets.entries()) {
       const bLen = bucket.length;
       if (bLen === 0) continue;
 
@@ -146,7 +146,7 @@ export class GameRenderer {
         const orb = bucket[i];
         g.circle(orb.x, orb.y, orb.radius);
       }
-      g.fill({ color: VIBRANT_PALETTE[c], alpha: 0.95 });
+      g.fill({ color, alpha: 0.95 });
       bucket.length = 0; // Réinitialiser sans réallouer
     }
   }
@@ -240,6 +240,20 @@ export class GameRenderer {
 
         // Tête pleine
         g.circle(snake.x, snake.y, radius * 1.1).fill({ color: snake.skin.primaryColor, alpha: 1.0 });
+
+        // Bouclier lumineux d'invulnérabilité au spawn
+        if (snake.invulnerableTimer > 0) {
+          const pulse = 1 + 0.12 * Math.sin(Date.now() * 0.012);
+          g.circle(snake.x, snake.y, radius * 1.5 * pulse).stroke({
+            color: 0x00f0ff,
+            width: 2,
+            alpha: 0.6 + 0.3 * Math.sin(Date.now() * 0.01),
+          });
+          g.circle(snake.x, snake.y, radius * 1.35 * pulse).fill({
+            color: 0x00f0ff,
+            alpha: 0.15 + 0.1 * Math.sin(Date.now() * 0.01),
+          });
+        }
 
         // Yeux expressifs
         const eyeOffsetAngle = 0.65;

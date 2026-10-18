@@ -37,6 +37,9 @@ export class Snake {
   public isBoosting: boolean = false;
   private boostDropTimer: number = 0;
 
+  // Bouclier d'invulnérabilité au spawn (2.5 secondes de protection)
+  public invulnerableTimer: number = 2.5;
+
   // Statistiques
   public kills: number = 0;
 
@@ -100,6 +103,14 @@ export class Snake {
   ): void {
     if (!this.isAlive) return;
 
+    // Gestion du bouclier d'invulnérabilité
+    if (this.invulnerableTimer > 0) {
+      this.invulnerableTimer = Math.max(0, this.invulnerableTimer - dt);
+      if (this.isBoosting) {
+        this.invulnerableTimer = 0; // Le turbo désactive immédiatement la protection
+      }
+    }
+
     // 1. Vitesse et consommation de masse en boost
     const canBoost = this.isBoosting && this.mass > CONFIG.MIN_BOOST_MASS;
     this.speed = canBoost ? CONFIG.BOOST_SPEED : CONFIG.BASE_SPEED;
@@ -124,10 +135,10 @@ export class Snake {
         }
       }
 
-      // Particules de boost
+      // Particules de boost (couleur identique aux boules laissées)
       if (onBoostParticle && this.segments.length > 0) {
         const tail = this.segments[this.segments.length - 1];
-        onBoostParticle(tail.x, tail.y, tail.angle, this.skin.accentColor);
+        onBoostParticle(tail.x, tail.y, tail.angle, this.skin.primaryColor);
       }
     } else {
       this.boostDropTimer = 0;
@@ -242,7 +253,7 @@ export class Snake {
   }
 
   public checkHeadCollisionWithBody(otherHeadX: number, otherHeadY: number, otherHeadRadius: number): boolean {
-    if (!this.isAlive) return false;
+    if (!this.isAlive || this.invulnerableTimer > 0) return false;
 
     // 1. Broadphase AABB ultra-rapide en O(1)
     if (
@@ -254,9 +265,9 @@ export class Snake {
       return false;
     }
 
-    // 2. Narrowphase : tester les segments par pas de 2
-    const startIdx = 4;
-    const threshold = this.radius * 0.8 + otherHeadRadius * 0.8;
+    // 2. Narrowphase : tester à partir du segment 6 pour éviter les collisions parasites au niveau du cou
+    const startIdx = 6;
+    const threshold = (this.radius + otherHeadRadius) * 0.72;
     const thresholdSq = threshold * threshold;
     const len = this.segments.length;
 

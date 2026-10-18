@@ -45,26 +45,57 @@ export function circleIntersectsCircle(
 }
 
 export const VIBRANT_PALETTE = [
-  0x00f0ff, // Cyan
-  0xff007f, // Magenta
-  0x39ff14, // Acid Lime
-  0xffaa00, // Amber
-  0x9d00ff, // Electric Violet
-  0x00ffcc, // Turquoise
-  0xff3366, // Coral
-  0xffdd00, // Gold
+  0x00f0ff, // 0: Cyan (Cyber Neon)
+  0xff007f, // 1: Magenta (Cosmic Void)
+  0x39ff14, // 2: Acid Lime (Toxic Emerald)
+  0xffaa00, // 3: Amber
+  0x9d00ff, // 4: Electric Violet
+  0x00ffcc, // 5: Turquoise
+  0xff3366, // 6: Coral
+  0xffdd00, // 7: Gold
+  // Couleurs de skins
+  0xff5500, // 8: Solar Flare Primary (Orange)
+  0x00e5ff, // 9: Phantom Ice Primary (Ice Cyan)
+  0xffd700, // 10: Golden Emperor Primary (Gold)
+  0x8a2be2, // 11: Cyber Neon Secondary (Purple)
+  0x008844, // 12: Toxic Emerald Secondary (Dark Emerald)
+  0x5e00b8, // 13: Cosmic Void Secondary (Dark Violet)
+  0x0077b6, // 14: Phantom Ice Secondary (Deep Blue)
+  0xd47a00, // 15: Golden Emperor Secondary (Dark Amber)
 ];
 
+// Les 8 premières couleurs servent à l'apparition des orbes sauvages dans l'arène
 export function getRandomVibrantColor(): number {
-  return VIBRANT_PALETTE[Math.floor(Math.random() * VIBRANT_PALETTE.length)];
+  return VIBRANT_PALETTE[Math.floor(Math.random() * 8)];
 }
 
 export function getRandomVibrantColorIndex(): { color: number; index: number } {
-  const index = Math.floor(Math.random() * VIBRANT_PALETTE.length);
+  const index = Math.floor(Math.random() * 8);
   return { color: VIBRANT_PALETTE[index], index };
 }
 
 export function getColorIndex(color: number): number {
   const idx = VIBRANT_PALETTE.indexOf(color);
-  return idx !== -1 ? idx : 0;
+  if (idx !== -1) return idx;
+
+  // Recherche de la couleur la plus proche en distance RGB Euclidienne
+  const r1 = (color >> 16) & 0xff;
+  const g1 = (color >> 8) & 0xff;
+  const b1 = color & 0xff;
+
+  let bestIdx = 0;
+  let bestDist = Infinity;
+  for (let i = 0; i < VIBRANT_PALETTE.length; i++) {
+    const c = VIBRANT_PALETTE[i];
+    const r2 = (c >> 16) & 0xff;
+    const g2 = (c >> 8) & 0xff;
+    const b2 = c & 0xff;
+    const dist = (r1 - r2) ** 2 + (g1 - g2) ** 2 + (b1 - b2) ** 2;
+    if (dist < bestDist) {
+      bestDist = dist;
+      bestIdx = i;
+    }
+  }
+  return bestIdx;
 }
+

@@ -72,10 +72,10 @@ wss.on('connection', (ws: WebSocket) => {
       ws.send(welcomePacket);
     }
 
-    // 2. C2S_INPUT (Paquet binaire ultra-compact de 4 octets à 30-60 Hz)
+    // 2. C2S_INPUT (Paquet binaire ultra-compact de 4 à 8 octets à 30-60 Hz)
     else if (opcode === OPCODES.C2S_INPUT && hasJoined) {
-      const { angle, isBoosting } = BinaryProtocol.decodeInput(arrayBuffer);
-      currentRoom.handlePlayerInput(playerId, angle, isBoosting);
+      const { angle, isBoosting, posX, posY } = BinaryProtocol.decodeInput(arrayBuffer);
+      currentRoom.handlePlayerInput(playerId, angle, isBoosting, posX, posY);
     }
 
     // 3. C2S_PING (Calcul du temps de latence réseau aller-retour RTT)

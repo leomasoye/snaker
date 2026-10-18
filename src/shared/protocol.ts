@@ -120,9 +120,10 @@ export class BinaryProtocol {
     return { name, skinIndex, roomId };
   }
 
-  // C2S_INPUT: [OpCode: 1B, AngleScaled: 2B (uint16: 0-65535 -> 0-2pi), Boost: 1B] -> Total 4B
-  public static encodeInput(angle: number, isBoosting: boolean): ArrayBuffer {
-    const buffer = new ArrayBuffer(4);
+  // C2S_INPUT: [OpCode: 1B, AngleScaled: 2B (uint16: 0-65535 -> 0-2pi), Boost: 1B, PosX: 2B (int16), PosY: 2B (int16)] -> Total 8B
+  public static encodeInput(angle: number, isBoosting: boolean, posX?: number, posY?: number): ArrayBuffer {
+    const hasPos = posX !== undefined && posY !== undefined;
+    const buffer = new ArrayBuffer(hasPos ? 8 : 4);
     const view = new DataView(buffer);
     view.setUint8(0, OPCODES.C2S_INPUT);
     // Normaliser angle [0, 2PI] vers Uint16 [0, 65535]
@@ -131,15 +132,25 @@ export class BinaryProtocol {
     const uint16Angle = Math.round((normAngle / (Math.PI * 2)) * 65535);
     view.setUint16(1, uint16Angle, true);
     view.setUint8(3, isBoosting ? 1 : 0);
+    if (hasPos) {
+      view.setInt16(4, Math.round(posX), true);
+      view.setInt16(6, Math.round(posY), true);
+    }
     return buffer;
   }
 
-  public static decodeInput(buffer: ArrayBuffer): { angle: number; isBoosting: boolean } {
+  public static decodeInput(buffer: ArrayBuffer): { angle: number; isBoosting: boolean; posX?: number; posY?: number } {
     const view = new DataView(buffer);
     const uint16Angle = view.getUint16(1, true);
     const angle = (uint16Angle / 65535) * (Math.PI * 2);
     const isBoosting = view.getUint8(3) === 1;
-    return { angle, isBoosting };
+    let posX: number | undefined;
+    let posY: number | undefined;
+    if (buffer.byteLength >= 8) {
+      posX = view.getInt16(4, true);
+      posY = view.getInt16(6, true);
+    }
+    return { angle, isBoosting, posX, posY };
   }
 
   // C2S_PING / S2C_PONG
@@ -407,7 +418,10 @@ export class BinaryProtocol {
       const value = view.getUint8(offset++);
       const colorIndex = view.getUint8(offset++);
 
-      const VIBRANT_PALETTE = [0x00f0ff, 0xff007f, 0x39ff14, 0xffaa00, 0x9d00ff, 0x00ffcc, 0xff3366, 0xffdd00];
+      const VIBRANT_PALETTE = [
+        0x00f0ff, 0xff007f, 0x39ff14, 0xffaa00, 0x9d00ff, 0x00ffcc, 0xff3366, 0xffdd00,
+        0xff5500, 0x00e5ff, 0xffd700, 0x8a2be2, 0x008844, 0x5e00b8, 0x0077b6, 0xd47a00,
+      ];
       addedFood.push({
         id,
         x,
